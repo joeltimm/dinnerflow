@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Recipe Box | Dinner with a Twist</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Dancing+Script:wght@700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#EF6C45', // Your vibrant orange
+                        'primary-dark': '#C3582A',
+                        'amber-50': '#FFF8F1', // Warm background
+                        'brand-brown': '#4D3F31',
+                    },
+                    fontFamily: {
+                        sans: ['Montserrat', 'sans-serif'],
+                        script: ['Dancing Script', 'cursive'],
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-amber-50 text-brand-brown min-h-screen font-sans antialiased selection:bg-orange-200 selection:text-brand-brown">
+
+    <nav class="bg-white/90 backdrop-blur-sm shadow-sm py-4 px-6 fixed w-full z-50 transition-all duration-300 top-0">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-primary text-xl">
+                    <i class="fa-solid fa-utensils"></i>
+                </div>
+                <span class="font-bold text-lg tracking-tight text-gray-900">Weekly Recipe Box</span>
+            </div>
+            <a href="#" class="text-primary hover:text-primary-dark font-bold tracking-wide uppercase text-sm transition-colors border-2 border-primary/20 hover:border-primary px-4 py-2 rounded-full">
+                Login
+            </a>
+        </div>
+    </nav>
+
+    <main class="pt-32 pb-12 overflow-hidden">
+        
+        <section class="container mx-auto px-4 max-w-4xl text-center mb-24 relative">
+            <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -z-10 w-full max-w-3xl h-full bg-orange-100/50 rounded-full blur-3xl opacity-60"></div>
+
+            <h1 class="text-4xl md:text-6xl font-extrabold mb-6 text-gray-900 leading-[1.1]">
+                Stop scrolling. <br>
+                <span class="text-primary relative inline-block">
+                    Start cooking dinner.
+                    <svg class="absolute w-full h-3 -bottom-1 left-0 text-primary opacity-30" viewBox="0 0 200 9" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.00025 6.99997C2.00025 6.99997 54.4025 2.50095 102.162 2.50095C149.921 2.50095 198.001 5.99994 198.001 5.99994" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                </span>
+            </h1>
+            
+            <p class="text-lg md:text-2xl text-gray-600 max-w-2xl mx-auto mb-16 leading-relaxed font-medium">
+                Relax already! Get one weekly email with a hand-picked recipe idea. No planning, no doom-scrolling through food blogs.
+            </p>
+
+            <form id="hero-form" class="max-w-md mx-auto relative group z-10">
+                <div class="relative transform transition-transform duration-300 hover:scale-[1.02]">
+                    <input type="email" placeholder="Your email (safer than leftover lasagna)" required 
+                        class="w-full py-5 pl-6 pr-36 rounded-full border-2 border-orange-100 bg-white shadow-xl text-lg focus:outline-none focus:border-primary focus:ring-4 focus:ring-orange-100 placeholder:text-gray-400 placeholder:text-base">
+                    
+                    <button type="submit" 
+                        class="absolute right-2 top-2 bottom-2 bg-primary hover:bg-primary-dark text-white font-bold rounded-full px-6 transition-all shadow-md flex items-center gap-2">
+                        <span>Join Waitlist</span>
+                        <i class="fa-solid fa-arrow-right text-sm"></i>
+                    </button>
+                </div>
+                <p class="mt-4 text-sm text-gray-500 font-medium">
+                    <i class="fa-solid fa-lock text-xs mr-1 opacity-70"></i> We'll keep your details secure. No spam, just ham.
+                </p>
+            </form>
+        </section>
+
+        <section class="bg-white py-24 px-4 shadow-sm border-y border-orange-100 relative overflow-hidden">
+            <div class="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-orange-50 rounded-full opacity-50 blur-3xl"></div>
+
+            <div class="max-w-6xl mx-auto relative z-10">
+                <h2 class="text-3xl md:text-5xl font-extrabold text-center mb-16 text-gray-900">
+                    How It Works 
+                    <span class="block text-primary font-script text-4xl md:text-5xl mt-2 transform -rotate-2">In 5 Steps or Less</span>
+                </h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="group p-8 rounded-3xl bg-amber-50 hover:bg-white transition-all duration-300 border-2 border-transparent hover:border-orange-100 hover:shadow-xl hover:-translate-y-2">
+                        <div class="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-primary text-2xl mb-6 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-fire-burner"></i>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900">1. Tell us what you like</h3>
+                        <p class="text-gray-600 leading-relaxed text-sm font-medium">Answer a few questions. We learn your profile so we don't suggest cilantro if you think it tastes like soap.</p>
+                    </div>
+                    
+                    <div class="group p-8 rounded-3xl bg-amber-50 hover:bg-white transition-all duration-300 border-2 border-transparent hover:border-orange-100 hover:shadow-xl hover:-translate-y-2">
+                        <div class="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-primary text-2xl mb-6 group-hover:scale-110 transition-transform">
+                            <i class="fa-regular fa-paper-plane"></i>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900">2. Get one email</h3>
+                        <p class="text-gray-600 leading-relaxed text-sm font-medium">We send you <span class="font-bold text-primary">one</span> carefully selected recipe idea. Just one. Because you have enough decisions to make.</p>
+                    </div>
+                    
+                    <div class="group p-8 rounded-3xl bg-amber-50 hover:bg-white transition-all duration-300 border-2 border-transparent hover:border-orange-100 hover:shadow-xl hover:-translate-y-2">
+                        <div class="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-primary text-2xl mb-6 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-rotate"></i>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900">3. Pick or Skip</h3>
+                        <p class="text-gray-600 leading-relaxed text-sm font-medium">Love it? Cook it! Hate it? Click once to swap it. No hurt feelings, we promise.</p>
+                    </div>
+                    
+                    <div class="group p-8 rounded-3xl bg-amber-50 hover:bg-white transition-all duration-300 border-2 border-transparent hover:border-orange-100 hover:shadow-xl hover:-translate-y-2">
+                        <div class="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-primary text-2xl mb-6 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-basket-shopping"></i>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900">4. Get supplies</h3>
+                        <p class="text-gray-600 leading-relaxed text-sm font-medium">Ingredients sync instantly to Todoist. Instructions land in your inbox. You look like a genius.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="py-24 px-4 max-w-5xl mx-auto">
+            <h2 class="text-center text-3xl md:text-4xl font-extrabold mb-16 text-gray-900">
+                Why your current method 
+                <span class="relative inline-block px-2">
+                    <span class="relative z-10">isn't working</span>
+                    <span class="absolute bottom-1 left-0 w-full h-3 bg-orange-200 -rotate-2 -z-0"></span>
+                </span>
+            </h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10">
+                <div class="flex items-start space-x-5">
+                    <div class="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-white shadow-md text-primary border border-gray-100">
+                        <i class="fa-solid fa-mobile-screen-button text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2">No More Planning Apps</h3>
+                        <p class="text-gray-600 leading-relaxed">Stop managing "projects" for dinner. Our algorithm tracks what you cook and builds a profile automatically.</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start space-x-5">
+                    <div class="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-white shadow-md text-primary border border-gray-100">
+                        <i class="fa-solid fa-wand-magic-sparkles text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2">Intelligent Curation</h3>
+                        <p class="text-gray-600 leading-relaxed">Never see the same recipe twice! Unless you want to. We remember your history so you don't have to.</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start space-x-5">
+                    <div class="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-white shadow-md text-primary border border-gray-100">
+                        <i class="fa-regular fa-face-smile text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2">Zero Cognitive Load</h3>
+                        <p class="text-gray-600 leading-relaxed">No scrolling through 5,000 "quick" pasta recipes. We make the decision for you, you just approve it.</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start space-x-5">
+                    <div class="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-white shadow-md text-primary border border-gray-100">
+                        <i class="fa-solid fa-check-double text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2">Seamless Integration</h3>
+                        <p class="text-gray-600 leading-relaxed">Connected ingredient lists sync automatically to Todoist. No copying, pasting, or forgetting the garlic.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="signup" class="py-24 px-4 bg-gradient-to-b from-orange-50 to-white text-center relative overflow-hidden">
+             <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-orange-200 to-transparent"></div>
+
+            <div class="max-w-2xl mx-auto relative z-10">
+                <h2 class="text-3xl md:text-5xl font-extrabold mb-6 text-gray-900">Want to stop overthinking dinner?</h2>
+                <p class="text-xl text-gray-600 mb-10">Join the waitlist. Your future hungry self will thank you.</p>
+                
+                <form id="footer-form" class="flex flex-col sm:flex-row gap-4 justify-center items-center max-w-lg mx-auto">
+                    <input type="email" placeholder="Enter your email" required 
+                        class="w-full px-6 py-4 rounded-xl border border-gray-200 focus:border-primary focus:ring-4 focus:ring-orange-100 outline-none shadow-sm text-lg bg-white">
+                    
+                    <button type="submit" 
+                        class="w-full sm:w-auto bg-primary hover:bg-primary-dark text-white font-bold py-4 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 whitespace-nowrap text-lg">
+                        Get Access
+                    </button>
+                </form>
+                
+                <p id="footer-msg" class="mt-4 text-green-600 font-bold hidden bg-green-50 inline-block px-4 py-2 rounded-lg border border-green-100">
+                    <i class="fa-solid fa-check mr-2"></i> Thanks! You're on the list.
+                </p>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-white border-t border-gray-100 py-12 text-center">
+        <div class="flex justify-center mb-6">
+             <div class="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-primary text-2xl grayscale hover:grayscale-0 transition-all">
+                <i class="fa-solid fa-utensils"></i>
+            </div>
+        </div>
+        <p class="text-gray-500 max-w-lg mx-auto px-4 leading-relaxed font-medium">
+            Cooking should be less stressful and more fun. With Dinnerflow, you get a weekly recipe surprise without the planning headache.
+        </p>
+        <p class="mt-8 text-xs text-gray-400 font-semibold tracking-wider uppercase">&copy; 2023 Dinner with a Twist. All rights cooked.</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            
+            // Reusable form handler
+            function handleFormSubmit(e) {
+                e.preventDefault();
+                const form = e.target;
+                const emailInput = form.querySelector('input[type="email"]');
+                const button = form.querySelector('button');
+                const originalText = button.innerHTML;
+                
+                if (emailInput.value && emailInput.value.includes('@')) {
+                    // Simulate API call processing
+                    button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cooking...';
+                    button.disabled = true;
+                    button.classList.add('opacity-75', 'cursor-not-allowed');
+                    
+                    setTimeout(() => {
+                        // Success State
+                        button.innerHTML = '<i class="fa-solid fa-check"></i> Added!';
+                        button.classList.replace('bg-primary', 'bg-green-500');
+                        button.classList.replace('hover:bg-primary-dark', 'hover:bg-green-600');
+                        form.reset();
+                        
+                        // Reset button after 3 seconds
+                        setTimeout(() => {
+                            button.innerHTML = originalText;
+                            button.disabled = false;
+                            button.classList.remove('opacity-75', 'cursor-not-allowed');
+                            button.classList.replace('bg-green-500', 'bg-primary');
+                            button.classList.replace('hover:bg-green-600', 'hover:bg-primary-dark');
+                        }, 3000);
+                        
+                    }, 1200); // 1.2 second fake network delay
+                } else {
+                    alert("That email looks a bit undercooked. Try again?");
+                }
+            }
+
+            // Attach listeners to both forms independently
+            const heroForm = document.getElementById('hero-form');
+            const footerForm = document.getElementById('footer-form');
+
+            if (heroForm) heroForm.addEventListener('submit', handleFormSubmit);
+            if (footerForm) footerForm.addEventListener('submit', handleFormSubmit);
+        });
+    </script>
+</body>
+</html>

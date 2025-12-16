@@ -1,0 +1,55 @@
+# --- n8n Specifics ---
+*.save
+.n8n/
+# --- Database ---
+
+# PostgreSQL (Local data volumes if mapped in project folder)
+postgres_data/
+pgdata/
+db_data/
+postgres-data/
+./scripts
+n8n_data/
+# SQLite (Legacy/Fallback)
+database.sqlite
+database.sqlite-shm
+database.sqlite-wal
+db-init/*.sql
+# Exclude the config file containing the encryption key
+config
+.n8n/config
+
+# Exclude local binary data (file uploads/downloads in executions)
+binaryData/
+.n8n/binaryData/
+
+# Exclude static assets if generated
+static/
+.streamlit/
+
+# --- Environment Variables & Secrets ---
+
+# High priority: Never commit .env files with API keys/passwords
+.env
+.env.production
+.env.local
+
+# --- Logs & System ---
+
+# n8n logs
+logs/
+*.log
+npm-debug.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# --- Node Modules (If running custom nodes) ---
+node_modules/
+
+# --- Venv ---
+venv/
+vvv/
+__psycache__
+.aider*

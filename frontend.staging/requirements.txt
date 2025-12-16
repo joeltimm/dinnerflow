@@ -1,0 +1,8 @@
+#requirements.txt
+streamlit
+psycopg2-binary
+sqlalchemy
+bcrypt
+cryptography
+infisical-python
+todoist_api_python

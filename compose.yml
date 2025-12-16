@@ -1,0 +1,99 @@
+services:
+  # Database moved here because it belongs to this app
+  dinner-db:
+    image: pgvector/pgvector:pg15
+    container_name: dinner-db
+    environment:
+      - POSTGRES_DB=${DINNER_DB_NAME}
+      - POSTGRES_USER=${DINNER_DB_USER}
+      - POSTGRES_PASSWORD=${DINNER_DB_PASSWORD}
+    volumes:
+      - dinner_postgres_data:/var/lib/postgresql/data
+    networks:
+      - n8n-net
+      - infisical-net  # Shared network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dinneruser -d dinnerflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5436:5432"
+
+  # Production Frontend
+  frontend:
+    build: ./frontend
+    container_name: dinnerflow_ui
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=dinner-db
+      - POSTGRES_DB=${DINNER_DB_NAME}
+      - POSTGRES_USER=${DINNER_DB_USER}
+      - POSTGRES_PASSWORD=${DINNER_DB_PASSWORD}
+      - INFISICAL_API_URL=http://infisical-backend:8080
+      - INFISICAL_TOKEN=${INFISICAL_TOKEN}
+    ports:
+      - "8501:8501"
+    networks:
+      - n8n-net
+      - infisical-net # Assuming this is external
+    depends_on:
+      - dinner-db-staging
+
+      # Staging Frontend
+  frontend.staging:
+    build: ./frontend.staging
+    container_name: dinnerflow_ui_staging
+    restart: unless-stopped
+    environment:
+      - STAGING_POSTGRES_HOST=dinner-db-staging
+      - POSTGRES_DB=${STAGING_DINNER_DB_NAME}
+      - POSTGRES_USER=${STAGING_DINNER_DB_USER}
+      - POSTGRES_PASSWORD=${STAGING_DINNER_DB_PASSWORD}
+      - INFISICAL_API_URL=http://infisical-backend:8080
+      - INFISICAL_TOKEN=${INFISICAL_TOKEN}
+    ports:
+      - "8502:8502"
+    networks:
+      - n8n-net
+      - infisical-net
+    depends_on:
+      - dinner-db
+
+  #staging backend
+  dinner-db-staging:
+    image: pgvector/pgvector:pg15
+    container_name: dinner-db-staging
+    environment:
+      - STAGING_POSTGRES_HOST=dinner-db-staging
+      - POSTGRES_DB=${STAGING_DINNER_DB_NAME}
+      - POSTGRES_USER=${STAGING_DINNER_DB_USER}
+      - POSTGRES_PASSWORD=${STAGING_DINNER_DB_PASSWORD}
+    volumes:
+      - staging_dinner_postgres_data:/var/lib/postgresql/data
+    networks:
+      - n8n-net
+      - infisical-net # Shared network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dinner-db-staging"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5437:5432"
+
+networks:
+  infisical-net:
+    name: infisical-net
+    external: true
+  n8n-net:
+    name: n8n-net
+    external: true
+
+volumes:
+  dinner_postgres_data:
+    external: true
+    name: n8n_dinner_postgres_data # <--- IMPORTANT: Match this to your 'docker volume ls' output
+  staging_dinner_postgres_data:

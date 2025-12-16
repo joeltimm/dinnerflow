@@ -1,0 +1,26 @@
+                                            Table "public.recipes"
+      Column       |            Type             | Collation | Nullable |               Default               
+-------------------+-----------------------------+-----------+----------+-------------------------------------
+ id                | integer                     |           | not null | nextval('recipes_id_seq'::regclass)
+ title             | text                        |           | not null | 
+ source_url        | text                        |           |          | 
+ entry_method      | text                        |           |          | 'scraped'::text
+ ingredients       | jsonb                       |           |          | 
+ instructions      | jsonb                       |           |          | 
+ full_text_content | text                        |           |          | 
+ local_image_path  | text                        |           |          | 
+ embedding         | vector(1536)                |           |          | 
+ created_at        | timestamp without time zone |           |          | CURRENT_TIMESTAMP
+ rating            | integer                     |           |          | 
+ last_cooked       | timestamp without time zone |           |          | 
+ times_cooked      | integer                     |           |          | 0
+ is_favorite       | boolean                     |           |          | false
+ user_id           | integer                     |           |          | 
+Indexes:
+    "recipes_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "fk_recipes_user" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+Referenced by:
+    TABLE "cooking_log" CONSTRAINT "cooking_log_recipe_id_fkey" FOREIGN KEY (recipe_id) REFERENCES recipes(id)
+    TABLE "recipe_sync_logs" CONSTRAINT "recipe_sync_logs_recipe_id_fkey" FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE SET NULL
+

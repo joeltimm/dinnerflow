@@ -1,0 +1,221 @@
+🏠 Landing Page Copy
+Hero
+
+Iron Skillet
+Dinner. Decided.
+
+Subhead:
+One good decision. Every night.
+
+Primary CTA:
+Get Fed
+
+Secondary (quiet):
+Already have an account? Sign in.
+
+Value Blocks
+
+Stop planning. Start cooking.
+Iron Skillet sends you dinner ideas you’ll actually make.
+Not aspirational. Not overwhelming. Just solid meals.
+
+Built from your habits
+It remembers what you cook, what you love, and what you never want again.
+
+No lists. No thinking.
+Ingredients land in Todoist.
+Recipes show up when it’s time.
+
+Social Proof (soft)
+
+For home cooks who are done negotiating with themselves.
+
+Footer Microcopy
+
+Sharp tools. Simple meals.
+
+🔐 Auth Screens
+Login Title
+
+Welcome back.
+
+Subtext:
+Let’s see what’s for dinner.
+
+Button:
+Continue
+
+Error:
+That didn’t work. Try again.
+
+Signup Title
+
+Set up your skillet.
+
+Subtext:
+This takes about 30 seconds.
+
+Button:
+Create account
+
+Password error:
+Make it at least 6 characters. You deserve better.
+
+🍳 Tonight View
+Header
+
+Tonight
+
+Subhead:
+No scrolling. This is the one.
+
+Recipe Card
+
+Primary CTA:
+I cooked this
+
+Secondary:
+Not tonight
+
+Success toast:
+Handled.
+
+Empty state:
+Nothing in the skillet yet. Add a recipe.
+
+📚 Recipes (Vault)
+Header
+
+Your Skillet
+
+Subhead:
+Meals that earned their place.
+
+Card Buttons
+
+Open
+
+Meta text:
+
+⭐ for rating
+
+🔥 for times cooked
+
+Empty state:
+The skillet’s cold. Add something worth cooking.
+
+✍️ Add Recipe
+
+Title field label:
+What do you call it?
+
+URL helper text:
+Optional. For future reference.
+
+Notes placeholder:
+What matters. Skip the fluff.
+
+Save button:
+Add to skillet
+
+Success:
+Added. It’s in rotation now.
+
+⚙️ Preferences
+Header
+
+Preferences
+
+Subhead:
+Set it once. We remember.
+
+Dietary Section
+
+Label:
+Dietary rules
+
+Helper:
+Allergies. Hard no’s. Strong opinions.
+
+Save button:
+Save
+
+Success:
+Locked in.
+
+Todoist Section
+
+Header:
+Ingredients List
+
+Helper:
+We’ll put groceries where you already look.
+
+Button:
+Connect Todoist
+
+Success:
+Ingredients will show up when you choose a meal.
+
+Failure:
+That token didn’t work.
+
+📧 Weekly Email — Round 1 (Choices)
+
+Subject:
+Iron Skillet: What’s for dinner
+
+Body intro:
+Here are a few solid options. Pick one.
+
+Buttons:
+
+Cook this
+
+Show me another
+
+Footer microcopy:
+One decision. Then eat.
+
+📧 Follow-up Email — Recipe
+
+Subject:
+Iron Skillet: You’re cooking tonight
+
+Intro:
+Here’s what you chose.
+
+CTA:
+Add ingredients to Todoist
+
+Close:
+We’ll check back later.
+
+🧾 Review Flow (Post-Cook)
+
+Prompt:
+Worth making again?
+
+Buttons:
+
+⭐⭐⭐⭐⭐
+
+Never again
+
+Notes placeholder:
+Anything future-you should know?
+
+Save:
+Done
+
+🧠 Microcopy (sprinkled everywhere)
+
+Handled.
+
+In rotation.
+
+Locked in.
+
+Good choice.
+
+That’ll do.
