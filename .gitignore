@@ -18,7 +18,6 @@ db-init/*.sql
 # Exclude the config file containing the encryption key
 config
 .n8n/config
-
 # Exclude local binary data (file uploads/downloads in executions)
 binaryData/
 .n8n/binaryData/
@@ -33,7 +32,7 @@ static/
 .env
 .env.production
 .env.local
-
+.infisical*
 # --- Logs & System ---
 
 # n8n logs
@@ -51,5 +50,6 @@ node_modules/
 # --- Venv ---
 venv/
 vvv/
-__psycache__
+__pycache__
 .aider*
+web/dist/
