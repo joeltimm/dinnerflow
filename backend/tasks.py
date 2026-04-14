@@ -12,6 +12,7 @@ import logging
 import psycopg2.extras
 
 from celery_app import app
+from config import get_settings
 from database import get_connection, init_pool
 
 logger = logging.getLogger(__name__)
@@ -94,15 +95,18 @@ def cleanup_stale_data():
     Runs weekly (Sunday 4:30 AM).
     """
     _ensure_pool()
+    retention = f"{get_settings().data_retention_days} days"
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM search_terms WHERE created_at < NOW() - INTERVAL '90 days'"
+                "DELETE FROM search_terms WHERE created_at < NOW() - INTERVAL %s",
+                (retention,),
             )
             search_deleted = cur.rowcount
 
             cur.execute(
-                "DELETE FROM recipe_sync_logs WHERE synced_at < NOW() - INTERVAL '90 days'"
+                "DELETE FROM recipe_sync_logs WHERE synced_at < NOW() - INTERVAL %s",
+                (retention,),
             )
             sync_deleted = cur.rowcount
 
@@ -123,19 +127,20 @@ def check_disk_and_db_usage():
     import shutil
 
     _ensure_pool()
+    settings = get_settings()
 
     # Disk usage on the partition holding the working directory
     usage = shutil.disk_usage("/")
     used_pct = (usage.used / usage.total) * 100
     free_gb = usage.free / (1024 ** 3)
 
-    if used_pct >= 90:
+    if used_pct >= settings.disk_crit_pct:
         logger.error(
             "DISK CRITICAL: %.1f%% used, %.1f GB free — "
             "risk of data loss if DB cannot write!",
             used_pct, free_gb,
         )
-    elif used_pct >= 80:
+    elif used_pct >= settings.disk_warn_pct:
         logger.warning(
             "DISK WARNING: %.1f%% used, %.1f GB free — consider cleanup",
             used_pct, free_gb,

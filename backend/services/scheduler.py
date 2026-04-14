@@ -12,12 +12,11 @@ import logging
 import psycopg2.extras
 from services.search import search_recipes
 
+from auth.tokens import make_email_token, make_unsubscribe_token
 from config import get_settings
 from database import get_connection
 from services import llm as llm_svc
 from services.email import send_meal_plan_email
-from routers.chef import make_email_token
-from routers.account import make_unsubscribe_token
 
 logger = logging.getLogger(__name__)
 

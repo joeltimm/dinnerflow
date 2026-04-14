@@ -1,6 +1,9 @@
 # --- n8n Specifics ---
 *.save
 .n8n/
+
+# Stray DB schema dumps
+_nullable,
 # --- Database ---
 
 # PostgreSQL (Local data volumes if mapped in project folder)

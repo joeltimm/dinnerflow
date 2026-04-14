@@ -15,8 +15,6 @@ from config import get_settings
 
 logger = logging.getLogger(__name__)
 
-SESSION_DURATION_DAYS = 30
-
 
 # ── Passwords ─────────────────────────────────────────────────────────────────
 
@@ -44,7 +42,7 @@ def create_session_token(conn, user_id: int) -> tuple[str, datetime]:
     and return (token, expires_at).
     """
     token = secrets.token_urlsafe(32)
-    expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_DURATION_DAYS)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=get_settings().session_duration_days)
 
     with conn.cursor() as cur:
         cur.execute(

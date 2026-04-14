@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     dinner_db_user: str = "dinneruser"
     dinner_db_password: str
     dinner_db_host: str = "dinner-db"
-    dinner_db_port: int = 5436
+    # Internal container port (5432). Host-side mapping is 5436 — see compose.yml.
+    dinner_db_port: int = 5432
 
     # ── Security ──────────────────────────────────────────────────────────────
     # Fernet key for encrypting Todoist API tokens stored in DB
@@ -21,7 +22,8 @@ class Settings(BaseSettings):
     secret_key: str
 
     # ── LLM (OpenAI-compatible local endpoint) ────────────────────────────────
-    llm_base_url: str = "http://100.98.99.49:8081/v1"
+    # Must be set in .env or compose.yml (e.g. http://host:8081/v1)
+    llm_base_url: str = ""
     llm_model: str = "gpt-4o-mini"
     llm_timeout: int = 1200  # seconds — local model is slow; recipe extraction can take 15+ min
 
@@ -50,6 +52,23 @@ class Settings(BaseSettings):
     # ── CORS / Frontend ───────────────────────────────────────────────────────
     # Origin(s) allowed for CORS (space-separated if multiple)
     cors_origins: str = "http://localhost:5173"
+
+    # ── Sessions & tokens ────────────────────────────────────────────────────
+    session_duration_days: int = 30
+    email_link_max_age_days: int = 7
+    unsubscribe_link_max_age_days: int = 90
+
+    # ── Data retention ───────────────────────────────────────────────────────
+    data_retention_days: int = 90
+
+    # ── Image uploads ────────────────────────────────────────────────────────
+    max_image_size_bytes: int = 10_485_760  # 10 MB
+    image_resize_px: int = 800
+    image_quality: int = 85
+
+    # ── Monitoring thresholds ────────────────────────────────────────────────
+    disk_warn_pct: int = 80
+    disk_crit_pct: int = 90
 
     class Config:
         env_file = ".env"

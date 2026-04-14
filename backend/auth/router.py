@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 COOKIE_NAME = "session_token"
-COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days in seconds
 
 
 # ── Request/response models ───────────────────────────────────────────────────
@@ -83,7 +82,7 @@ def login(request: Request, body: LoginRequest, response: Response, conn=Depends
         httponly=True,
         samesite="lax",
         secure=settings.app_base_url.startswith("https://"),
-        max_age=COOKIE_MAX_AGE,
+        max_age=settings.session_duration_days * 86400,
         expires=expires_at.replace(tzinfo=None).isoformat(),
     )
 
@@ -135,7 +134,7 @@ def register(request: Request, body: RegisterRequest, response: Response, conn=D
         httponly=True,
         samesite="lax",
         secure=settings.app_base_url.startswith("https://"),
-        max_age=COOKIE_MAX_AGE,
+        max_age=settings.session_duration_days * 86400,
         expires=expires_at.replace(tzinfo=None).isoformat(),
     )
 

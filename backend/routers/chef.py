@@ -14,10 +14,10 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel
 from services.search import search_recipes
 
+from auth.tokens import make_email_token, verify_email_token
 from auth.utils import decrypt_token
 from config import get_settings
 from database import get_db
@@ -29,31 +29,6 @@ from services import todoist as todoist_svc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chef", tags=["chef"])
-
-# Email action links are valid for 7 days
-EMAIL_LINK_MAX_AGE = 7 * 24 * 3600
-
-
-# ── Token helpers for email links ─────────────────────────────────────────────
-
-def _signer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(get_settings().secret_key, salt="email-select")
-
-
-def make_email_token(user_id: int) -> str:
-    """Create a signed, time-limited token encoding user_id for email links."""
-    return _signer().dumps(user_id)
-
-
-def verify_email_token(token: str) -> int:
-    """Decode and verify an email action token. Returns user_id or raises HTTPException."""
-    try:
-        user_id = _signer().loads(token, max_age=EMAIL_LINK_MAX_AGE)
-        return int(user_id)
-    except SignatureExpired:
-        raise HTTPException(status_code=400, detail="Email link has expired (7-day limit)")
-    except BadSignature:
-        raise HTTPException(status_code=400, detail="Invalid email link")
 
 
 # ── Todoist helper ────────────────────────────────────────────────────────────

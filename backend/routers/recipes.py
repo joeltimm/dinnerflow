@@ -46,7 +46,7 @@ def _own_recipe(cur, recipe_id: int, user_id: int) -> dict:
 
 # ── Request models ────────────────────────────────────────────────────────────
 
-MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_IMAGE_SIZE = get_settings().max_image_size_bytes
 
 
 class RecipeCreate(BaseModel):
@@ -317,11 +317,12 @@ async def upload_image(
     left = (w - side) // 2
     top = (h - side) // 2
     img = img.crop((left, top, left + side, top + side))
-    img = img.resize((800, 800), Image.LANCZOS)
+    size = get_settings().image_resize_px
+    img = img.resize((size, size), Image.LANCZOS)
 
     filename = f"{uuid.uuid4()}.jpg"
     save_path = uploads_dir / filename
-    img.save(save_path, "JPEG", quality=85)
+    img.save(save_path, "JPEG", quality=get_settings().image_quality)
 
     # Store relative path in DB (served as /uploads/<filename>)
     rel_path = f"/uploads/{filename}"

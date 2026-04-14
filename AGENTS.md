@@ -152,11 +152,13 @@ if not user:
 ```
 
 **Constants:**
-- Define at module level with UPPERCASE naming
-- Document purpose in comments
+- Prefer adding configurable values to the `Settings` class in `config.py` (e.g. `max_image_size_bytes`, `data_retention_days`, `disk_warn_pct`)
+- Use module-level UPPERCASE only for truly fixed values (e.g. `COOKIE_NAME = "session_token"`)
 
 ```python
-MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB max file size
+from config import get_settings
+settings = get_settings()
+# settings.max_image_size_bytes, settings.data_retention_days, etc.
 ```
 
 **Router Pattern:**
@@ -199,6 +201,7 @@ const recipes = await apiClient.getRecipes();
 - Session-based auth with `user_sessions` table
 
 ### Key Services
+- **auth/tokens.py**: Signed token utilities for email action links and unsubscribe links (shared by routers and services)
 - **services/llm.py**: Recipe extraction from URLs + meal idea generation
 - **services/search.py**: Tavily + DuckDuckGo recipe search
 - **services/scheduler.py**: Meal plan builder (called by Celery tasks)
@@ -250,8 +253,9 @@ When adding tests:
 ## Environment Setup
 
 - `.env` file required at project root (see `.env.example`)
-- Gmail OAuth token directory mounted at `/app/google_auth/` in the backend container (read-only)
-- Key env vars: TAVILY_API_KEY, GOOGLE_AUTH_PATH, SENDER_EMAIL, FERNET_KEY, SECRET_KEY
+- Gmail OAuth token directory mounted at `/app/google_auth/` in the backend container (read-only via `GOOGLE_AUTH_HOST_PATH`)
+- Recipe uploads mounted via `UPLOADS_HOST_PATH` (defaults to `./uploads`)
+- Key env vars: `LLM_BASE_URL`, `TAVILY_API_KEY`, `GOOGLE_AUTH_HOST_PATH`, `SENDER_EMAIL`, `FERNET_KEY`, `SECRET_KEY`
 - Todoist tokens are per-user, stored Fernet-encrypted in the `user_integrations` table (no env var)
 
 ---

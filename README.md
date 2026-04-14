@@ -46,6 +46,7 @@ dinnerflow/
 │   ├── tasks.py                 # Background tasks (email, meal plans, monitoring)
 │   ├── auth/
 │   │   ├── router.py            # /api/auth — register, login, logout, me
+│   │   ├── tokens.py            # Signed token helpers (email action links, unsubscribe)
 │   │   └── utils.py             # Password hashing, session tokens, Fernet
 │   ├── limiter.py               # Rate limiting (slowapi)
 │   ├── routers/
@@ -121,13 +122,16 @@ DINNER_DB_PASSWORD=changeme
 FERNET_KEY=<generated above>
 SECRET_KEY=<generated above>
 
-LLM_BASE_URL=http://100.98.99.49:8081/v1
+LLM_BASE_URL=http://your-llm-host:8081/v1   # local OpenAI-compatible endpoint
 LLM_MODEL=gpt-4o-mini
 
 TAVILY_API_KEY=<your key>
 
 SENDER_EMAIL=you@gmail.com
-GOOGLE_AUTH_PATH=/path/to/google_auth   # directory containing token_<suffix>.json
+
+# Host paths — mounted into containers by compose.yml
+GOOGLE_AUTH_HOST_PATH=/path/to/google_auth   # directory containing token_<suffix>.json
+# UPLOADS_HOST_PATH=./uploads               # defaults to ./uploads if not set
 
 APP_BASE_URL=http://your-domain-or-ip
 CORS_ORIGINS=http://your-domain-or-ip
@@ -279,7 +283,7 @@ The `/health` endpoint reports DB connectivity, database size, and disk usage:
 
 Returns `"status": "degraded"` if DB is unreachable or disk usage exceeds 90%.
 
-A daily Celery beat task (`check_disk_and_db_usage`, 4 AM) logs disk and database size with warnings at 80% and errors at 90%.
+A daily Celery beat task (`check_disk_and_db_usage`, 4 AM) logs disk and database size with warnings at `disk_warn_pct` (default 80%) and errors at `disk_crit_pct` (default 90%). Thresholds are configurable in `config.py`.
 
 ### Log Rotation
 
@@ -304,4 +308,4 @@ Deletion cascades through all tables (recipes, cooking log, shopping list, sessi
 | `send_all_meal_plans` | Tue/Sat 10:30 AM | Fan-out weekly meal plan emails to consented users |
 | `cleanup_sessions` | Daily 3:00 AM | Purge expired session tokens |
 | `check_disk_and_db_usage` | Daily 4:00 AM | Log disk + DB size, warn at 80%/90% |
-| `cleanup_stale_data` | Sunday 4:30 AM | Data retention: delete search terms and sync logs older than 90 days |
+| `cleanup_stale_data` | Sunday 4:30 AM | Data retention: delete search terms and sync logs older than `data_retention_days` (default 90) |

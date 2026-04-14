@@ -2,9 +2,8 @@
 LLM service — thin wrapper around the local OpenAI-compatible endpoint.
 
 The local LLM server (e.g. LM Studio / Ollama openai-compat) exposes the
-same API as OpenAI, so we use the openai Python client pointed at the local
-host.  This replicates what n8n's HTTP nodes did when calling:
-  http://100.98.99.49:8081/v1/chat/completions
+same API as OpenAI, so we use the openai Python client pointed at the
+configured LLM_BASE_URL (see config.py / compose.yml).
 
 Main functions:
   extract_recipe(html_text)  → {"ingredients": [...], "instructions": [...]}

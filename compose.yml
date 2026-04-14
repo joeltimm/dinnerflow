@@ -57,7 +57,7 @@ services:
       - DINNER_DB_PORT=5432
       - FERNET_KEY=${FERNET_KEY}
       - SECRET_KEY=${SECRET_KEY}
-      - LLM_BASE_URL=${LLM_BASE_URL:-http://100.98.99.49:8081/v1}
+      - LLM_BASE_URL=${LLM_BASE_URL:?Set LLM_BASE_URL in .env}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - SENDER_EMAIL=${SENDER_EMAIL}
@@ -67,12 +67,12 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
       - REDIS_URL=redis://redis:6379/0
     volumes:
-      # Recipe image uploads — persisted on host
-      - /home/joel/iron-skillet/uploads:/app/uploads
+      # Recipe image uploads — persisted on host (set UPLOADS_HOST_PATH in .env)
+      - ${UPLOADS_HOST_PATH:-./uploads}:/app/uploads
       # Gmail OAuth token — reuse the existing token from calendar_bot.
       # token_joeltimm.json already includes gmail.send scope.
       # Mounted read-only so the backend can load and auto-refresh it.
-      - /home/joel/my_super_secure_secrets/google_auth:/app/google_auth
+      - ${GOOGLE_AUTH_HOST_PATH:?Set GOOGLE_AUTH_HOST_PATH in .env}:/app/google_auth:ro
     # Port 8000 on the host is taken by gohttpserver.
     # nginx (web container) reaches the backend over the internal app-net network,
     # so no host-port binding is needed for normal operation.
@@ -109,7 +109,7 @@ services:
       - DINNER_DB_PORT=5432
       - FERNET_KEY=${FERNET_KEY}
       - SECRET_KEY=${SECRET_KEY}
-      - LLM_BASE_URL=${LLM_BASE_URL:-http://100.98.99.49:8081/v1}
+      - LLM_BASE_URL=${LLM_BASE_URL:?Set LLM_BASE_URL in .env}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - SENDER_EMAIL=${SENDER_EMAIL}
@@ -118,8 +118,8 @@ services:
       - UPLOADS_PATH=/app/uploads
       - REDIS_URL=redis://redis:6379/0
     volumes:
-      - /home/joel/iron-skillet/uploads:/app/uploads
-      - /home/joel/my_super_secure_secrets/google_auth:/app/google_auth
+      - ${UPLOADS_HOST_PATH:-./uploads}:/app/uploads
+      - ${GOOGLE_AUTH_HOST_PATH:?Set GOOGLE_AUTH_HOST_PATH in .env}:/app/google_auth:ro
     networks:
       - app-net
     depends_on:
@@ -165,21 +165,6 @@ services:
       backend:
         condition: service_healthy
 
-  # ── Legacy Streamlit apps (kept for reference / rollback) ─────────────────
-  # Uncomment to run alongside the new stack on different ports.
-  #
-  # frontend-legacy:
-  #   build: ./frontend
-  #   container_name: dinnerflow_ui_legacy
-  #   ports: ["8501:8501"]
-  #   ...
-  #
-  # ironskillet-legacy:
-  #   build: ./ironskillet
-  #   container_name: ironskillet_legacy
-  #   ports: ["8502:8502"]
-  #   ...
-
 networks:
   app-net:
     # Internal network shared by dinner-db, backend, and web (nginx)
@@ -187,9 +172,10 @@ networks:
 
 volumes:
   redis_data:
+  # Compose-internal alias "dinner_postgres_data" maps to the external Docker
+  # volume named "dinnerflow_postgres_data". Create it once before first run:
+  #   docker volume create dinnerflow_postgres_data
+  # Kept external so `docker compose down -v` cannot accidentally destroy data.
   dinner_postgres_data:
-    # Production database volume — kept external so that `docker compose down -v`
-    # cannot accidentally destroy recipe data.
-    # If starting fresh: docker volume create dinnerflow_postgres_data
     external: true
     name: dinnerflow_postgres_data

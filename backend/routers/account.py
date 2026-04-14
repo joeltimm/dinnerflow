@@ -14,10 +14,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from itsdangerous import BadSignature, SignatureExpired
 from pydantic import BaseModel
 from typing import Optional
 
+from auth.tokens import make_unsubscribe_token, verify_unsubscribe_token
 from config import get_settings
 from database import get_db, get_connection
 from dependencies import get_current_user, invalidate_session
@@ -216,15 +217,6 @@ class EmailPreferencesUpdate(BaseModel):
     email_consent: bool
 
 
-def _unsubscribe_signer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(get_settings().secret_key, salt="email-unsubscribe")
-
-
-def make_unsubscribe_token(user_id: int) -> str:
-    """Create a signed token for one-click email unsubscribe links."""
-    return _unsubscribe_signer().dumps(user_id)
-
-
 @router.get("/email-preferences")
 def get_email_preferences(conn=Depends(get_db), user=Depends(get_current_user)):
     """Return current email consent status for the logged-in user."""
@@ -259,10 +251,8 @@ def unsubscribe_from_email(token: str = Query(...)):
     One-click unsubscribe handler for email links. No login required.
     Uses a signed token (valid 90 days) to identify the user.
     """
-    UNSUB_MAX_AGE = 90 * 24 * 3600  # 90 days
-
     try:
-        user_id = int(_unsubscribe_signer().loads(token, max_age=UNSUB_MAX_AGE))
+        user_id = verify_unsubscribe_token(token)
     except SignatureExpired:
         return HTMLResponse(
             "<html><body style='font-family:sans-serif;max-width:500px;margin:60px auto;text-align:center;'>"
