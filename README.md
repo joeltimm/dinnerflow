@@ -41,12 +41,15 @@ dinnerflow/
 │   ├── config.py                # Env-var settings (pydantic-settings)
 │   ├── database.py              # Connection pool
 │   ├── dependencies.py          # get_current_user dependency
+│   ├── celery_app.py            # Celery broker + beat schedule
+│   ├── tasks.py                 # Background tasks (email, meal plans, monitoring)
 │   ├── auth/
 │   │   ├── router.py            # /api/auth — register, login, logout, me
 │   │   └── utils.py             # Password hashing, session tokens, Fernet
 │   ├── limiter.py               # Rate limiting (slowapi)
 │   ├── routers/
-│   │   ├── admin.py             # /api/admin — admin-only endpoints
+│   │   ├── account.py           # /api/account — data export, account deletion (GDPR)
+│   │   ├── admin.py             # /api/admin — user management, impersonation, admin deletion
 │   │   ├── chef.py              # /api/chef — instant-ideas, cook, email-plan, select-from-email
 │   │   ├── dashboard.py         # /api/dashboard + /api/onboarding — stats, charts, first-run checklist
 │   │   ├── recipes.py           # /api/recipes — CRUD, ratings, favorites, images, history
@@ -56,12 +59,19 @@ dinnerflow/
 │   ├── services/
 │   │   ├── email.py             # Gmail send (OAuth, mirrors calendar_bot)
 │   │   ├── llm.py               # Recipe extraction + meal idea generation
-│   │   ├── scheduler.py         # APScheduler — Tue/Sat meal plans + session cleanup
+│   │   ├── scheduler.py         # Meal plan builder (called by Celery tasks)
 │   │   ├── scraper.py           # URL fetch + HTML cleaning
 │   │   ├── search.py            # Tavily (+ DuckDuckGo fallback) recipe search
 │   │   └── todoist.py           # Todoist API — sync ingredients as tasks
+│   ├── alembic/                 # Database migrations (Alembic)
+│   │   ├── env.py
+│   │   └── versions/            # Migration scripts (001_baseline, 002_add_indexes, ...)
+│   ├── alembic.ini
 │   └── scripts/
 │       └── generate_gmail_token.py  # One-time Gmail OAuth setup
+├── scripts/
+│   ├── backup-db.sh             # Automated pg_dump with rotation (7 daily + 4 weekly)
+│   └── restore-db.sh            # Interactive database restore from backup
 ├── web/
 │   ├── src/
 │   │   ├── api/client.js        # Axios API client (all endpoints)
@@ -149,6 +159,32 @@ docker compose up -d --build
 
 App is available at `http://localhost` (or your `APP_BASE_URL`).
 
+### 6. Initialize migrations (existing DB)
+
+If you already have a running database, stamp the current Alembic revision so future migrations can be tracked:
+
+```bash
+docker compose exec backend alembic stamp 002
+```
+
+For a fresh database, apply the schema first (`dinnerflow_schema.sql`), then stamp.
+
+### 7. Set up backups (recommended)
+
+Add a daily cron job for automated database backups:
+
+```bash
+crontab -e
+# Add this line:
+0 2 * * * /home/joel/dinnerflow/scripts/backup-db.sh >> /home/joel/dinnerflow/backups/backup.log 2>&1
+```
+
+Backups are saved to `backups/` with 7 daily + 4 weekly rotation. To customize the backup location:
+
+```bash
+BACKUP_DIR=/mnt/nas/dinnerflow-backups ./scripts/backup-db.sh
+```
+
 ---
 
 ## Database Schema
@@ -173,6 +209,24 @@ psql -h localhost -p 5436 -U $DINNER_DB_USER -d $DINNER_DB_NAME \
 
 See [SCHEMA.md](SCHEMA.md) for a full table-by-table reference.
 
+### Migrations (Alembic)
+
+Schema changes are tracked with [Alembic](https://alembic.sqlalchemy.org/) using raw SQL migrations (no SQLAlchemy ORM). Migrations live in `backend/alembic/versions/`.
+
+```bash
+# Check current revision
+docker compose exec backend alembic current
+
+# Apply pending migrations
+docker compose exec backend alembic upgrade head
+
+# Create a new migration
+docker compose exec backend alembic revision -m "describe the change"
+
+# Rollback one migration
+docker compose exec backend alembic downgrade -1
+```
+
 ---
 
 ## How it works
@@ -191,3 +245,57 @@ The same flow can be triggered manually via `POST /api/chef/email-plan`.
 
 1. `POST /api/chef/instant-ideas` — LLM generates ideas, Tavily finds URLs
 2. User selects one → `POST /api/chef/cook` — scrapes the URL, extracts recipe via LLM, saves to DB, syncs to Todoist
+
+---
+
+## Operations
+
+### Backups & Restore
+
+Automated daily backups via `scripts/backup-db.sh` (see Setup step 7). Retention: 7 daily + 4 weekly snapshots.
+
+To restore from a backup:
+
+```bash
+./scripts/restore-db.sh backups/daily/dinnerflow_20260414_020000.sql.gz
+```
+
+This stops the application containers, drops and recreates the database, restores the dump, and restarts everything. Interactive confirmation required.
+
+### Health Monitoring
+
+The `/health` endpoint reports DB connectivity, database size, and disk usage:
+
+```json
+{
+  "status": "ok",
+  "checks": {
+    "database": { "connected": true, "size_mb": 42.3 },
+    "disk": { "used_percent": 61.2, "free_gb": 145.8 }
+  }
+}
+```
+
+Returns `"status": "degraded"` if DB is unreachable or disk usage exceeds 90%.
+
+A daily Celery beat task (`check_disk_and_db_usage`, 4 AM) logs disk and database size with warnings at 80% and errors at 90%.
+
+### Log Rotation
+
+All containers use Docker's `json-file` log driver with 10 MB max size and 3-file rotation (configured via the `x-logging` anchor in `compose.yml`).
+
+### Account Management (GDPR)
+
+- **Data export**: `GET /api/account/export-data` — downloads all user data as JSON
+- **Self-service deletion**: `DELETE /api/account/delete` with `{"confirm": true}`
+- **Admin deletion**: `DELETE /api/admin/users/{id}`
+
+Deletion cascades through all tables (recipes, cooking log, shopping list, sessions, integrations, sync logs, search terms) and removes uploaded recipe images from disk.
+
+### Scheduled Tasks (Celery Beat)
+
+| Task | Schedule | Description |
+| :--- | :--- | :--- |
+| `send_all_meal_plans` | Tue/Sat 10:30 AM | Fan-out weekly meal plan emails to all users |
+| `cleanup_sessions` | Daily 3:00 AM | Purge expired session tokens |
+| `check_disk_and_db_usage` | Daily 4:00 AM | Log disk + DB size, warn at 80%/90% |

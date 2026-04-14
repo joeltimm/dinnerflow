@@ -1,17 +1,20 @@
 """
 Admin-only endpoints.
 
-GET  /api/admin/users           — list all users
-GET  /api/admin/users/{id}      — get a user's full profile
-POST /api/admin/impersonate/{id} — create a session token for another user
-                                   (returns a token the admin can use to view as that user)
+GET    /api/admin/users           — list all users
+GET    /api/admin/users/{id}      — get a user's full profile
+POST   /api/admin/impersonate/{id} — create a session token for another user
+DELETE /api/admin/users/{id}      — permanently delete a user and all their data
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from auth.utils import create_session_token
 from database import get_db
 from dependencies import require_admin
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
@@ -59,4 +62,40 @@ def impersonate(user_id: int, conn=Depends(get_db), admin=Depends(require_admin)
         "user_id": user_id,
         "email": target["email"],
         "note": "Set this as the session_token cookie to view the app as this user.",
+    }
+
+
+@router.delete("/users/{user_id}")
+def delete_user(user_id: int, conn=Depends(get_db), admin=Depends(require_admin)):
+    """
+    Permanently delete a user and all their data (admin action).
+    CASCADE foreign keys handle child rows (recipes, sessions, shopping list, etc.).
+    Uploaded recipe images are also removed from disk.
+    """
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete your own admin account")
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT id, email FROM users WHERE id = %s", (user_id,))
+        target = cur.fetchone()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Clean up uploaded images before CASCADE deletes recipe rows
+    from routers.account import _delete_user_uploaded_images
+    images_removed = _delete_user_uploaded_images(conn, user_id)
+
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+
+    logger.info(
+        "Admin %d (%s) deleted user %d (%s) — %d images removed",
+        admin["id"], admin["email"], user_id, target["email"], images_removed,
+    )
+
+    return {
+        "deleted": True,
+        "user_id": user_id,
+        "email": target["email"],
+        "images_removed": images_removed,
     }

@@ -83,3 +83,59 @@ def cleanup_sessions():
             cur.execute("DELETE FROM user_sessions WHERE expires_at <= NOW()")
             deleted = cur.rowcount
     logger.info("Expired sessions cleaned up (%d deleted).", deleted)
+
+
+# ── Monitoring tasks ────────────────────────────────────────────────────────
+
+@app.task(name="tasks.check_disk_and_db_usage", ignore_result=True)
+def check_disk_and_db_usage():
+    """
+    Daily health check (4 AM): log disk usage and database size.
+    Warns at 80%, errors at 90%.
+    """
+    import shutil
+
+    _ensure_pool()
+
+    # Disk usage on the partition holding the working directory
+    usage = shutil.disk_usage("/")
+    used_pct = (usage.used / usage.total) * 100
+    free_gb = usage.free / (1024 ** 3)
+
+    if used_pct >= 90:
+        logger.error(
+            "DISK CRITICAL: %.1f%% used, %.1f GB free — "
+            "risk of data loss if DB cannot write!",
+            used_pct, free_gb,
+        )
+    elif used_pct >= 80:
+        logger.warning(
+            "DISK WARNING: %.1f%% used, %.1f GB free — consider cleanup",
+            used_pct, free_gb,
+        )
+    else:
+        logger.info("Disk usage: %.1f%% used, %.1f GB free", used_pct, free_gb)
+
+    # Database size and per-table breakdown
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_database_size(current_database())")
+            db_size_bytes = cur.fetchone()[0]
+            db_size_mb = db_size_bytes / (1024 * 1024)
+
+            cur.execute("""
+                SELECT relname AS table,
+                       pg_total_relation_size(c.oid) AS total_bytes
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public' AND c.relkind = 'r'
+                ORDER BY total_bytes DESC
+                LIMIT 10
+            """)
+            tables = cur.fetchall()
+
+    logger.info("Database size: %.1f MB", db_size_mb)
+    for t in tables:
+        size_mb = t[1] / (1024 * 1024)
+        if size_mb >= 1:
+            logger.info("  %-30s %8.1f MB", t[0], size_mb)

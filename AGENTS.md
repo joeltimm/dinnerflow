@@ -47,11 +47,46 @@ docker exec -it ironskillet_web npm test
 docker exec -it ironskillet_web npm run lint
 ```
 
+### Database Migrations (Alembic)
+
+```bash
+# Check current migration revision
+docker compose exec backend alembic current
+
+# Apply all pending migrations
+docker compose exec backend alembic upgrade head
+
+# Rollback one migration
+docker compose exec backend alembic downgrade -1
+
+# Create a new migration (then edit the generated file)
+docker compose exec backend alembic revision -m "describe the change"
+
+# Stamp existing DB at a revision (skip running the migration)
+docker compose exec backend alembic stamp 002
+```
+
+### Backups
+
+```bash
+# Run a backup manually
+./scripts/backup-db.sh
+
+# Restore from a backup (interactive — prompts for confirmation)
+./scripts/restore-db.sh backups/daily/dinnerflow_20260414_020000.sql.gz
+
+# Custom backup location
+BACKUP_DIR=/mnt/nas/backups ./scripts/backup-db.sh
+```
+
 ### Docker
 
 ```bash
 # Start all services
 docker compose up -d
+
+# Rebuild after dependency changes (e.g. requirements.txt)
+docker compose up -d --build backend
 
 # View logs
 docker compose logs -f backend
@@ -61,7 +96,10 @@ docker compose logs -f db
 # Restart specific service
 docker compose restart backend
 
-# Check health
+# Check health (includes DB + disk status)
+curl -s http://localhost:8010/health | python3 -m json.tool
+
+# Check container status
 docker compose ps
 ```
 
@@ -163,8 +201,18 @@ const recipes = await apiClient.getRecipes();
 ### Key Services
 - **services/llm.py**: Recipe extraction from URLs + meal idea generation
 - **services/search.py**: Tavily + DuckDuckGo recipe search
-- **services/scheduler.py**: APScheduler for weekly plan automation
+- **services/scheduler.py**: Meal plan builder (called by Celery tasks)
 - **services/todoist.py**: Todoist API integration for shopping lists
+- **celery_app.py**: Celery broker config + beat schedule (meal plans Tue/Sat, session cleanup daily 3 AM, disk/DB monitoring daily 4 AM)
+- **tasks.py**: Background task definitions (welcome email, meal plans, session cleanup, disk/DB usage check)
+
+### Ops Infrastructure
+- **Alembic** (`backend/alembic/`): Raw SQL database migrations. No SQLAlchemy ORM — uses `op.execute()` for DDL
+- **Backup scripts** (`scripts/`): `backup-db.sh` (daily pg_dump + rotation) and `restore-db.sh` (interactive restore)
+- **Log rotation**: All containers use `json-file` driver with 10 MB / 3 file rotation (compose.yml `x-logging` anchor)
+- **Health endpoint** (`/health`): Reports DB connectivity + size, disk usage %. Returns `"degraded"` on failures
+- **Account management** (`routers/account.py`): GDPR data export + self-service account deletion
+- **Admin deletion** (`routers/admin.py`): Admin can delete any non-self user
 
 ### Onboarding / First-Run UX
 - **GET /api/onboarding** (in `routers/dashboard.py`): lightweight endpoint returning `has_recipes`, `has_dietary_prefs`, `has_cooked`, `recipe_count`
@@ -218,10 +266,11 @@ When adding tests:
 5. Add frontend page/component as needed
 
 ### Add new database table
-1. Write a migration SQL file (e.g. `migrate_xxx.sql`)
-2. Run migration: `docker exec -i dinner-db psql -U ${DINNER_DB_USER} -d ${DINNER_DB_NAME} -f migration.sql`
-3. Add raw SQL queries in the relevant router or service (project uses psycopg2, not an ORM)
-4. Update `dinnerflow_schema.sql` so fresh installs include the new table
+1. Create an Alembic migration: `docker compose exec backend alembic revision -m "add foo table"`
+2. Edit the generated file in `backend/alembic/versions/` — use `op.execute()` with raw SQL
+3. Apply: `docker compose exec backend alembic upgrade head`
+4. Add raw SQL queries in the relevant router or service (project uses psycopg2, not an ORM)
+5. Update `dinnerflow_schema.sql` so fresh installs include the new table
 
 ### Debug container issues
 ```bash

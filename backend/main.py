@@ -27,6 +27,7 @@ from routers.chef import router as chef_router
 from routers.settings import router as settings_router
 from routers.dashboard import router as dashboard_router
 from routers.admin import router as admin_router
+from routers.account import router as account_router
 from routers.tonight import router as tonight_router
 from routers.shopping import router as shopping_router
 
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_router)
     app.include_router(dashboard_router)
     app.include_router(admin_router)
+    app.include_router(account_router)
     app.include_router(tonight_router)
     app.include_router(shopping_router)
 
@@ -111,7 +113,49 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"status": "ok"}
+        """
+        Health endpoint — checks DB connectivity and disk usage.
+        Returns 200 with status "ok" or "degraded".
+        Used by Docker Compose health checks and external monitors.
+        """
+        import shutil
+        checks = {}
+        status_val = "ok"
+
+        # DB check
+        try:
+            from database import get_connection
+            with get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                    cur.execute("SELECT pg_database_size(current_database())")
+                    db_size_bytes = cur.fetchone()[0]
+            checks["database"] = {
+                "connected": True,
+                "size_mb": round(db_size_bytes / (1024 * 1024), 1),
+            }
+        except Exception as exc:
+            checks["database"] = {"connected": False, "error": str(exc)}
+            status_val = "degraded"
+
+        # Disk check
+        try:
+            usage = shutil.disk_usage("/")
+            used_pct = round((usage.used / usage.total) * 100, 1)
+            free_gb = round(usage.free / (1024 ** 3), 1)
+            checks["disk"] = {
+                "used_percent": used_pct,
+                "free_gb": free_gb,
+            }
+            if used_pct >= 90:
+                checks["disk"]["warning"] = "CRITICAL: disk nearly full"
+                status_val = "degraded"
+            elif used_pct >= 80:
+                checks["disk"]["warning"] = "disk usage above 80%"
+        except Exception as exc:
+            checks["disk"] = {"error": str(exc)}
+
+        return {"status": status_val, "checks": checks}
 
     return app
 

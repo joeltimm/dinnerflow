@@ -7,6 +7,7 @@ python-multipart==0.0.12  # File uploads
 
 # Database
 psycopg2-binary==2.9.11
+alembic==1.14.1
 
 # Auth & encryption
 bcrypt==5.0.0
