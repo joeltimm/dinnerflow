@@ -257,7 +257,9 @@ CREATE TABLE public.users (
     full_name text,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     is_admin boolean DEFAULT false,
-    dietary_preferences text
+    dietary_preferences text,
+    email_consent boolean DEFAULT false NOT NULL,
+    email_consent_date timestamp with time zone
 );
 
 
@@ -422,6 +424,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_expires ON public.user_sessions (expires
 CREATE INDEX IF NOT EXISTS idx_shopping_user_id ON public.shopping_list_items (user_id, is_checked, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cooking_log_recipe_id ON public.cooking_log (recipe_id);
 CREATE INDEX IF NOT EXISTS idx_sync_logs_user_id ON public.recipe_sync_logs (user_id);
+CREATE INDEX IF NOT EXISTS idx_users_email_consent ON public.users (id) WHERE email_consent = true;
+CREATE INDEX IF NOT EXISTS idx_search_terms_created ON public.search_terms (created_at);
 
 
 --

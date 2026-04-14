@@ -42,6 +42,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     full_name: str
+    email_consent: bool = False
 
 
 class UserOut(BaseModel):
@@ -50,6 +51,7 @@ class UserOut(BaseModel):
     full_name: str | None
     is_admin: bool
     dietary_preferences: str | None
+    email_consent: bool
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -61,7 +63,7 @@ def login(request: Request, body: LoginRequest, response: Response, conn=Depends
 
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, email, full_name, password_hash, is_admin, dietary_preferences "
+            "SELECT id, email, full_name, password_hash, is_admin, dietary_preferences, email_consent "
             "FROM users WHERE email = %s",
             (body.email.lower(),),
         )
@@ -91,6 +93,7 @@ def login(request: Request, body: LoginRequest, response: Response, conn=Depends
         "full_name": user["full_name"],
         "is_admin": user["is_admin"],
         "dietary_preferences": user["dietary_preferences"],
+        "email_consent": user["email_consent"],
     }
 
 
@@ -108,14 +111,19 @@ def register(request: Request, body: RegisterRequest, response: Response, conn=D
 
     pw_hash = hash_password(body.password)
 
+    consent_date = None
+    if body.email_consent:
+        from datetime import datetime, timezone
+        consent_date = datetime.now(timezone.utc)
+
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO users (email, password_hash, full_name)
-            VALUES (%s, %s, %s)
-            RETURNING id, email, full_name, is_admin, dietary_preferences
+            INSERT INTO users (email, password_hash, full_name, email_consent, email_consent_date)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, email, full_name, is_admin, dietary_preferences, email_consent
             """,
-            (body.email.lower(), pw_hash, body.full_name),
+            (body.email.lower(), pw_hash, body.full_name, body.email_consent, consent_date),
         )
         new_user = cur.fetchone()
 
@@ -146,6 +154,7 @@ def register(request: Request, body: RegisterRequest, response: Response, conn=D
         "full_name": new_user["full_name"],
         "is_admin": new_user["is_admin"],
         "dietary_preferences": new_user["dietary_preferences"],
+        "email_consent": new_user["email_consent"],
     }
 
 

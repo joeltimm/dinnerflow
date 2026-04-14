@@ -27,8 +27,8 @@ api.interceptors.response.use(
 export const login = (email, password) =>
   api.post('/auth/login', { email, password })
 
-export const register = (email, password, full_name) =>
-  api.post('/auth/register', { email, password, full_name })
+export const register = (email, password, full_name, email_consent = false) =>
+  api.post('/auth/register', { email, password, full_name, email_consent })
 
 export const logout = () => api.post('/auth/logout')
 
@@ -114,6 +114,18 @@ export const toggleShoppingItem = (id) => api.put(`/shopping/${id}`)
 export const deleteShoppingItem = (id) => api.delete(`/shopping/${id}`)
 
 export const clearCheckedItems = () => api.delete('/shopping/checked')
+
+// ── Account ───────────────────────────────────────────────────────────────────
+export const getEmailPreferences = () => api.get('/account/email-preferences')
+
+export const updateEmailPreferences = (email_consent) =>
+  api.put('/account/email-preferences', { email_consent })
+
+export const exportAccountData = () =>
+  api.get('/account/export-data', { responseType: 'blob' })
+
+export const deleteAccount = () =>
+  api.delete('/account/delete', { data: { confirm: true } })
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 export const adminListUsers = () => api.get('/admin/users')

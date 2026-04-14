@@ -19,6 +19,8 @@ Account records. One per registered user.
 | created_at | timestamp | CURRENT_TIMESTAMP | |
 | is_admin | boolean | false | |
 | dietary_preferences | text | | |
+| email_consent | boolean | false | NOT NULL |
+| email_consent_date | timestamptz | | |
 
 ---
 
@@ -93,7 +95,7 @@ Meal idea pool used by the weekly email scheduler and Instant Chef.
 
 ### user_sessions
 
-HTTP-only cookie sessions. Cleaned up daily by APScheduler.
+HTTP-only cookie sessions. Cleaned up daily by Celery Beat.
 
 | Column | Type | Default | Constraints |
 | :--- | :--- | :--- | :--- |

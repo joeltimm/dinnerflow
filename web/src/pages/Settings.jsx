@@ -6,11 +6,15 @@ import {
   getPreferences, updatePreferences,
   getTodoist, saveTodoistToken, deleteTodoist,
   getTodoistProjects, selectTodoistProject, createTodoistProject,
+  getEmailPreferences, updateEmailPreferences,
+  exportAccountData, deleteAccount,
 } from '../api/client'
 import { useOnboarding } from '../context/OnboardingContext'
+import { useAuth } from '../context/AuthContext'
 
 export default function Settings() {
   const { refresh: refreshOnboarding } = useOnboarding()
+  const { logout } = useAuth()
 
   // ── Preferences ─────────────────────────────────────────────────────────────
   const [prefs, setPrefs]           = useState('')
@@ -95,6 +99,60 @@ export default function Settings() {
       setNewProjectName('')
     } finally {
       setCreatingProject(false)
+    }
+  }
+
+  // ── Email preferences ───────────────────────────────────────────────────────
+  const [emailConsent, setEmailConsent] = useState(false)
+  const [emailLoading, setEmailLoading] = useState(true)
+  const [emailSaving, setEmailSaving]   = useState(false)
+
+  useEffect(() => {
+    getEmailPreferences()
+      .then((r) => { setEmailConsent(r.data.email_consent); setEmailLoading(false) })
+      .catch(() => setEmailLoading(false))
+  }, [])
+
+  const toggleEmailConsent = async () => {
+    setEmailSaving(true)
+    try {
+      const next = !emailConsent
+      await updateEmailPreferences(next)
+      setEmailConsent(next)
+    } finally {
+      setEmailSaving(false)
+    }
+  }
+
+  // ── Account actions ─────────────────────────────────────────────────────────
+  const [exporting, setExporting]       = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting]         = useState(false)
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const r = await exportAccountData()
+      const blob = new Blob([r.data], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'ironskillet_data.json'
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await deleteAccount()
+      logout()
+    } catch {
+      setDeleting(false)
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -250,6 +308,83 @@ export default function Settings() {
             )}
           </div>
         )}
+      </section>
+
+      {/* ── Email Preferences ────────────────────────────────────────── */}
+      <section className="forge-card p-6 mb-4">
+        <h2 className="font-bold text-brand-text text-sm uppercase tracking-widest mb-1">
+          Email Preferences
+        </h2>
+        <p className="text-sm text-brand-muted mb-4">
+          Control which emails you receive from Iron Skillet.
+        </p>
+
+        {emailLoading ? (
+          <p className="text-brand-muted text-sm animate-pulse">Loading...</p>
+        ) : (
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={emailConsent}
+              onChange={toggleEmailConsent}
+              disabled={emailSaving}
+              className="accent-brand-gold w-4 h-4"
+            />
+            <span className="text-sm text-brand-silver">
+              Receive weekly meal plan emails (Tue &amp; Sat)
+            </span>
+            {emailSaving && <span className="text-brand-muted text-xs animate-pulse">Saving...</span>}
+          </label>
+        )}
+      </section>
+
+      {/* ── Account ──────────────────────────────────────────────────── */}
+      <section className="forge-card p-6 mb-4">
+        <h2 className="font-bold text-brand-text text-sm uppercase tracking-widest mb-1">
+          Account
+        </h2>
+        <p className="text-sm text-brand-muted mb-5">
+          Manage your data and account.
+          See our <a href="/privacy" target="_blank" className="text-brand-blue hover:text-brand-blue-light underline transition-colors">privacy policy</a>.
+        </p>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="btn-steel px-5 py-2 text-sm"
+          >
+            {exporting ? 'Exporting...' : 'Export My Data'}
+          </button>
+
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-5 py-2 text-sm rounded-lg border border-red-800/40 text-red-400
+                         hover:bg-red-900/20 hover:text-red-300 transition-colors"
+            >
+              Delete Account
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-red-400 text-sm">Are you sure? This is permanent.</span>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm rounded-lg bg-red-700 text-white
+                           hover:bg-red-600 transition-colors font-semibold"
+              >
+                {deleting ? 'Deleting...' : 'Yes, delete everything'}
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-sm text-brand-muted hover:text-brand-silver transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   )

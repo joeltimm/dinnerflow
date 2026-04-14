@@ -66,7 +66,9 @@ def send_all_meal_plans():
     with get_connection() as conn:
         conn.cursor_factory = psycopg2.extras.RealDictCursor
         with conn.cursor() as cur:
-            cur.execute("SELECT id, email, full_name FROM users")
+            cur.execute(
+                "SELECT id, email, full_name FROM users WHERE email_consent = true"
+            )
             users = [dict(r) for r in cur.fetchall()]
 
     logger.info("Enqueuing meal plan tasks for %d users", len(users))
@@ -83,6 +85,31 @@ def cleanup_sessions():
             cur.execute("DELETE FROM user_sessions WHERE expires_at <= NOW()")
             deleted = cur.rowcount
     logger.info("Expired sessions cleaned up (%d deleted).", deleted)
+
+
+@app.task(name="tasks.cleanup_stale_data", ignore_result=True)
+def cleanup_stale_data():
+    """
+    Data retention: purge stale search terms and sync logs older than 90 days.
+    Runs weekly (Sunday 4:30 AM).
+    """
+    _ensure_pool()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM search_terms WHERE created_at < NOW() - INTERVAL '90 days'"
+            )
+            search_deleted = cur.rowcount
+
+            cur.execute(
+                "DELETE FROM recipe_sync_logs WHERE synced_at < NOW() - INTERVAL '90 days'"
+            )
+            sync_deleted = cur.rowcount
+
+    logger.info(
+        "Data retention cleanup: %d search terms, %d sync logs deleted.",
+        search_deleted, sync_deleted,
+    )
 
 
 # ── Monitoring tasks ────────────────────────────────────────────────────────

@@ -51,4 +51,8 @@ app.conf.beat_schedule = {
         "task": "tasks.check_disk_and_db_usage",
         "schedule": crontab(hour=4, minute=0),
     },
+    "data-retention-cleanup": {
+        "task": "tasks.cleanup_stale_data",
+        "schedule": crontab(hour=4, minute=30, day_of_week="sun"),
+    },
 }

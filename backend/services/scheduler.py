@@ -17,6 +17,7 @@ from database import get_connection
 from services import llm as llm_svc
 from services.email import send_meal_plan_email
 from routers.chef import make_email_token
+from routers.account import make_unsubscribe_token
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ def send_meal_plan_for_user(user_id: int, email: str, name: str) -> None:
 
     # Signed token for 'Add to My Recipes' email links (valid 7 days)
     select_token = make_email_token(user_id)
+    unsub_token = make_unsubscribe_token(user_id)
 
     send_meal_plan_email(
         to_email=email,
@@ -126,5 +128,6 @@ def send_meal_plan_for_user(user_id: int, email: str, name: str) -> None:
         user_id=user_id,
         recipes=recipes,
         select_token=select_token,
+        unsub_token=unsub_token,
     )
     logger.info("Meal plan email sent to %s (%d recipes)", email, len(recipes))

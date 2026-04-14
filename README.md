@@ -25,8 +25,9 @@ FastAPI backend + React frontend + PostgreSQL. AI scraping, recipe extraction, w
 - **Tonight** — Smart pick for what to cook now based on cook history; log it with a rating. New users see a welcome hero with getting-started guidance
 - **Shopping List** — Manual grocery list with check-off and clear-checked actions
 - **Dashboard** — Most-cooked and highest-rated charts; recipe, cook, and favourite counts. Empty state shows motivational message with CTAs instead of zeros
-- **Weekly email plan** — Scheduled Tue/Sat 10:30 AM; also triggerable on demand. Emails a personalized meal plan with one-click "Add to My Recipes" links
-- **Settings** — Dietary preferences; Todoist integration (encrypted token, syncs ingredients on cook)
+- **Weekly email plan** — Scheduled Tue/Sat 10:30 AM (opt-in only); also triggerable on demand. Emails a personalized meal plan with one-click "Add to My Recipes" links and an unsubscribe link
+- **Settings** — Dietary preferences; Todoist integration (encrypted token, syncs ingredients on cook); email preferences toggle; data export; account deletion
+- **Privacy & compliance** — Email opt-in consent at registration, one-click unsubscribe, GDPR data export/deletion, privacy policy page, cookie notice, automated data retention cleanup
 
 ---
 
@@ -48,7 +49,7 @@ dinnerflow/
 │   │   └── utils.py             # Password hashing, session tokens, Fernet
 │   ├── limiter.py               # Rate limiting (slowapi)
 │   ├── routers/
-│   │   ├── account.py           # /api/account — data export, account deletion (GDPR)
+│   │   ├── account.py           # /api/account — data export, deletion, email prefs, unsubscribe (GDPR)
 │   │   ├── admin.py             # /api/admin — user management, impersonation, admin deletion
 │   │   ├── chef.py              # /api/chef — instant-ideas, cook, email-plan, select-from-email
 │   │   ├── dashboard.py         # /api/dashboard + /api/onboarding — stats, charts, first-run checklist
@@ -76,8 +77,8 @@ dinnerflow/
 │   ├── src/
 │   │   ├── api/client.js        # Axios API client (all endpoints)
 │   │   ├── context/             # React context providers (Auth, Chef, Onboarding)
-│   │   ├── pages/               # Dashboard, Recipes, Chef, Tonight, ShoppingList, Settings, Login
-│   │   └── components/          # Layout, Sidebar, RecipeCard, StarRating, ProtectedRoute, etc.
+│   │   ├── pages/               # Dashboard, Recipes, Chef, Tonight, ShoppingList, Settings, Login, Privacy
+│   │   └── components/          # Layout, Sidebar, RecipeCard, StarRating, ProtectedRoute, CookieBanner, etc.
 │   └── nginx.conf               # Proxies /api/ and /uploads/ to backend
 ├── dinnerflow_schema.sql        # DB schema (apply on fresh install)
 └── SCHEMA.md                    # Human-readable schema reference
@@ -190,7 +191,7 @@ BACKUP_DIR=/mnt/nas/dinnerflow-backups ./scripts/backup-db.sh
 ## Database Schema
 
 ```
-users            — accounts (email, password_hash, dietary_preferences)
+users            — accounts (email, password_hash, dietary_preferences, email_consent)
 recipes          — cookbook (title, source_url, ingredients jsonb, instructions jsonb, rating, is_favorite)
 cooking_log      — per-session cook history (recipe_id, date_cooked, rating)
 user_integrations — third-party tokens (Todoist API token — Fernet encrypted)
@@ -233,7 +234,7 @@ docker compose exec backend alembic downgrade -1
 
 ### Weekly meal plan email
 
-APScheduler runs every Tuesday and Saturday at 10:30 AM. For each user it:
+Celery Beat triggers every Tuesday and Saturday at 10:30 AM. For each consented user it:
 1. Fetches the user's `search_terms` from the DB
 2. Asks the LLM to generate meal ideas
 3. Enriches each idea with a real recipe URL via Tavily
@@ -284,11 +285,15 @@ A daily Celery beat task (`check_disk_and_db_usage`, 4 AM) logs disk and databas
 
 All containers use Docker's `json-file` log driver with 10 MB max size and 3-file rotation (configured via the `x-logging` anchor in `compose.yml`).
 
-### Account Management (GDPR)
+### Account Management (GDPR / CAN-SPAM)
 
-- **Data export**: `GET /api/account/export-data` — downloads all user data as JSON
-- **Self-service deletion**: `DELETE /api/account/delete` with `{"confirm": true}`
+- **Data export**: `GET /api/account/export-data` — downloads all user data as JSON (also available in Settings UI)
+- **Self-service deletion**: `DELETE /api/account/delete` with `{"confirm": true}` (also available in Settings UI)
 - **Admin deletion**: `DELETE /api/admin/users/{id}`
+- **Email preferences**: `GET/PUT /api/account/email-preferences` — opt-in/out of meal plan emails (Settings UI toggle)
+- **One-click unsubscribe**: `GET /api/account/unsubscribe?token=...` — signed link in every email, no login required
+- **Privacy policy**: Served at `/privacy` (public page)
+- **Cookie notice**: Dismissible banner on first visit (functional session cookie only, no tracking)
 
 Deletion cascades through all tables (recipes, cooking log, shopping list, sessions, integrations, sync logs, search terms) and removes uploaded recipe images from disk.
 
@@ -296,6 +301,7 @@ Deletion cascades through all tables (recipes, cooking log, shopping list, sessi
 
 | Task | Schedule | Description |
 | :--- | :--- | :--- |
-| `send_all_meal_plans` | Tue/Sat 10:30 AM | Fan-out weekly meal plan emails to all users |
+| `send_all_meal_plans` | Tue/Sat 10:30 AM | Fan-out weekly meal plan emails to consented users |
 | `cleanup_sessions` | Daily 3:00 AM | Purge expired session tokens |
 | `check_disk_and_db_usage` | Daily 4:00 AM | Log disk + DB size, warn at 80%/90% |
+| `cleanup_stale_data` | Sunday 4:30 AM | Data retention: delete search terms and sync logs older than 90 days |

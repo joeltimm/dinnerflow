@@ -48,7 +48,7 @@ def get_current_user(
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT u.id, u.email, u.full_name, u.is_admin, u.dietary_preferences
+            SELECT u.id, u.email, u.full_name, u.is_admin, u.dietary_preferences, u.email_consent
             FROM user_sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token = %s

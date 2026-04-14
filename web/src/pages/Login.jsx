@@ -7,11 +7,12 @@ export default function Login() {
   const navigate = useNavigate()
 
   const [mode, setMode] = useState('login') // 'login' | 'register'
-  const [form, setForm] = useState({ email: '', password: '', full_name: '' })
+  const [form, setForm] = useState({ email: '', password: '', full_name: '', email_consent: false })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const set = (field) => (e) => setForm({ ...form, [field]: e.target.value })
+  const set = (field) => (e) =>
+    setForm({ ...form, [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
 
   const submit = async (e) => {
     e.preventDefault()
@@ -21,7 +22,7 @@ export default function Login() {
       if (mode === 'login') {
         await login(form.email, form.password)
       } else {
-        await register(form.email, form.password, form.full_name)
+        await register(form.email, form.password, form.full_name, form.email_consent)
       }
       navigate('/')
     } catch (err) {
@@ -116,6 +117,21 @@ export default function Login() {
               />
             </div>
 
+            {mode === 'register' && (
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.email_consent}
+                  onChange={set('email_consent')}
+                  className="mt-0.5 accent-brand-gold"
+                />
+                <span className="text-xs text-brand-silver leading-relaxed">
+                  Send me weekly meal plan emails with AI-powered recipe ideas.
+                  You can unsubscribe anytime.
+                </span>
+              </label>
+            )}
+
             {error && (
               <p className="text-red-400 text-sm bg-red-900/20 border border-red-800/40 px-4 py-2.5 rounded-lg">
                 {error}
@@ -130,6 +146,15 @@ export default function Login() {
               {loading ? '…' : mode === 'login' ? 'Sign In' : 'Create Account'}
             </button>
           </form>
+
+          {mode === 'register' && (
+            <p className="text-center text-xs text-brand-muted mt-4">
+              By creating an account you agree to our{' '}
+              <a href="/privacy" target="_blank" className="text-brand-silver underline hover:text-brand-text transition-colors">
+                privacy policy
+              </a>.
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -89,6 +89,28 @@ def _send(to: str, subject: str, html_body: str) -> None:
 
 # ── Email templates ───────────────────────────────────────────────────────────
 
+def _email_footer(settings, unsub_url: str | None = None) -> str:
+    """Standard compliance footer for all emails."""
+    privacy_url = f"{settings.app_base_url}/privacy"
+    settings_url = f"{settings.app_base_url}/settings"
+
+    unsub_line = ""
+    if unsub_url:
+        unsub_line = (
+            f'<a href="{unsub_url}" style="color:#999;text-decoration:underline;">'
+            'Unsubscribe</a> · '
+        )
+
+    return f"""
+        <div style="padding:16px 32px; background:#f5f5f5; text-align:center;
+                    color:#999; font-size:12px; line-height:1.8;">
+          Iron Skillet · Self-hosted meal planning<br>
+          {unsub_line}<a href="{settings_url}" style="color:#999;text-decoration:underline;">Email preferences</a>
+          · <a href="{privacy_url}" style="color:#999;text-decoration:underline;">Privacy policy</a>
+        </div>
+    """
+
+
 def send_welcome_email(to_email: str, user_name: str) -> None:
     """
     Onboarding email sent on registration.
@@ -108,7 +130,7 @@ def send_welcome_email(to_email: str, user_name: str) -> None:
 
         <div style="background:#1a1a2e; padding:32px; text-align:center;">
           <h1 style="color:#e2b96f; margin:0; font-size:28px; letter-spacing:1px;">
-            🍽️ Iron Skillet
+            Iron Skillet
           </h1>
           <p style="color:#aaa; margin:8px 0 0; font-size:14px;">
             Your personal AI-powered recipe vault
@@ -117,7 +139,7 @@ def send_welcome_email(to_email: str, user_name: str) -> None:
 
         <div style="padding:32px;">
           <h2 style="color:#1a1a2e; margin-top:0;">
-            Welcome, {user_name}! 👋
+            Welcome, {user_name}!
           </h2>
           <p style="color:#444; line-height:1.6;">
             You're all set up. Here's how to get the most out of Iron Skillet:
@@ -152,16 +174,13 @@ def send_welcome_email(to_email: str, user_name: str) -> None:
           </div>
         </div>
 
-        <div style="padding:16px 32px; background:#f5f5f5; text-align:center;
-                    color:#999; font-size:12px;">
-          Iron Skillet · Self-hosted meal planning
-        </div>
+        {_email_footer(settings)}
       </div>
     </body>
     </html>
     """
 
-    _send(to_email, "Welcome to Iron Skillet 🍳", html)
+    _send(to_email, "Welcome to Iron Skillet", html)
 
 
 def send_meal_plan_email(
@@ -170,6 +189,7 @@ def send_meal_plan_email(
     user_id: int,
     recipes: list[dict],
     select_token: str,
+    unsub_token: str = "",
 ) -> None:
     """
     Weekly meal plan email with recipe cards and 'Select This' action links.
@@ -245,13 +265,10 @@ def send_meal_plan_email(
           {cards_html}
         </div>
 
-        <div style="padding:16px 32px;background:#f5f5f5;text-align:center;
-                    color:#999;font-size:12px;">
-          Iron Skillet · Self-hosted meal planning
-        </div>
+        {_email_footer(settings, unsub_url=f"{settings.app_base_url}/api/account/unsubscribe?token={unsub_token}" if unsub_token else None)}
       </div>
     </body>
     </html>
     """
 
-    _send(to_email, "🍽️ Your Weekly Meal Ideas — Iron Skillet", html)
+    _send(to_email, "Your Weekly Meal Ideas — Iron Skillet", html)
