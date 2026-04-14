@@ -231,6 +231,22 @@ CREATE TABLE public.user_integrations (
 
 
 --
+-- Name: user_sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_sessions (
+    token text NOT NULL,
+    user_id integer NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+
+--
+-- Name: user_sessions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -367,6 +383,14 @@ ALTER TABLE ONLY public.user_integrations
 -- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
+ALTER TABLE ONLY public.user_sessions
+    ADD CONSTRAINT user_sessions_pkey PRIMARY KEY (token);
+
+
+--
+-- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_email_key UNIQUE (email);
 
@@ -384,6 +408,20 @@ ALTER TABLE ONLY public.users
 --
 
 CREATE INDEX idx_sync_logs_time ON public.recipe_sync_logs USING btree (synced_at);
+
+
+--
+-- Indexes for scalability (added in migration 001)
+--
+
+CREATE INDEX IF NOT EXISTS idx_recipes_user_id ON public.recipes (user_id);
+CREATE INDEX IF NOT EXISTS idx_recipes_user_favorites ON public.recipes (user_id, is_favorite) WHERE is_favorite = true;
+CREATE INDEX IF NOT EXISTS idx_recipes_user_created ON public.recipes (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON public.user_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON public.user_sessions (expires_at);
+CREATE INDEX IF NOT EXISTS idx_shopping_user_id ON public.shopping_list_items (user_id, is_checked, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cooking_log_recipe_id ON public.cooking_log (recipe_id);
+CREATE INDEX IF NOT EXISTS idx_sync_logs_user_id ON public.recipe_sync_logs (user_id);
 
 
 --
@@ -440,6 +478,14 @@ ALTER TABLE ONLY public.shopping_list_items
 
 ALTER TABLE ONLY public.user_integrations
     ADD CONSTRAINT user_integrations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_sessions user_sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_sessions
+    ADD CONSTRAINT user_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --

@@ -1,5 +1,5 @@
 services:
-  # Database moved here because it belongs to this app
+  # ── Database ───────────────────────────────────────────────────────────────
   dinner-db:
     image: pgvector/pgvector:pg15
     container_name: dinner-db
@@ -10,90 +10,174 @@ services:
     volumes:
       - dinner_postgres_data:/var/lib/postgresql/data
     networks:
-      - n8n-net
-      - infisical-net  # Shared network
+      - app-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dinneruser -d dinnerflow"]
+      test: ["CMD-SHELL", "pg_isready -U ${DINNER_DB_USER} -d ${DINNER_DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
     ports:
       - "5436:5432"
 
-  # Production Frontend
-  frontend:
-    build: ./frontend
-    container_name: dinnerflow_ui
+  # ── Redis (Celery broker + result backend) ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ironskillet_redis
     restart: unless-stopped
-    environment:
-      - POSTGRES_HOST=dinner-db
-      - POSTGRES_DB=${DINNER_DB_NAME}
-      - POSTGRES_USER=${DINNER_DB_USER}
-      - POSTGRES_PASSWORD=${DINNER_DB_PASSWORD}
-      - INFISICAL_API_URL=http://infisical-backend:8080
-      - INFISICAL_TOKEN=${INFISICAL_TOKEN}
-    ports:
-      - "8501:8501"
-    networks:
-      - n8n-net
-      - infisical-net # Assuming this is external
-    depends_on:
-      - dinner-db-staging
-
-      # Staging Frontend
-  frontend.staging:
-    build: ./frontend.staging
-    container_name: dinnerflow_ui_staging
-    restart: unless-stopped
-    environment:
-      - STAGING_POSTGRES_HOST=dinner-db-staging
-      - POSTGRES_DB=${STAGING_DINNER_DB_NAME}
-      - POSTGRES_USER=${STAGING_DINNER_DB_USER}
-      - POSTGRES_PASSWORD=${STAGING_DINNER_DB_PASSWORD}
-      - INFISICAL_API_URL=http://infisical-backend:8080
-      - INFISICAL_TOKEN=${INFISICAL_TOKEN}
-    ports:
-      - "8502:8502"
-    networks:
-      - n8n-net
-      - infisical-net
-    depends_on:
-      - dinner-db
-
-  #staging backend
-  dinner-db-staging:
-    image: pgvector/pgvector:pg15
-    container_name: dinner-db-staging
-    environment:
-      - STAGING_POSTGRES_HOST=dinner-db-staging
-      - POSTGRES_DB=${STAGING_DINNER_DB_NAME}
-      - POSTGRES_USER=${STAGING_DINNER_DB_USER}
-      - POSTGRES_PASSWORD=${STAGING_DINNER_DB_PASSWORD}
     volumes:
-      - staging_dinner_postgres_data:/var/lib/postgresql/data
+      - redis_data:/data
     networks:
-      - n8n-net
-      - infisical-net # Shared network
-    restart: unless-stopped
+      - app-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d dinner-db-staging"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ── FastAPI backend ────────────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    container_name: ironskillet_backend
+    restart: unless-stopped
+    environment:
+      - DINNER_DB_NAME=${DINNER_DB_NAME}
+      - DINNER_DB_USER=${DINNER_DB_USER}
+      - DINNER_DB_PASSWORD=${DINNER_DB_PASSWORD}
+      - DINNER_DB_HOST=dinner-db
+      - DINNER_DB_PORT=5432
+      - FERNET_KEY=${FERNET_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://100.98.99.49:8081/v1}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - SENDER_EMAIL=${SENDER_EMAIL}
+      - GOOGLE_AUTH_PATH=/app/google_auth
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost}
+      - UPLOADS_PATH=/app/uploads
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      # Recipe image uploads — persisted on host
+      - /home/joel/iron-skillet/uploads:/app/uploads
+      # Gmail OAuth token — reuse the existing token from calendar_bot.
+      # token_joeltimm.json already includes gmail.send scope.
+      # Mounted read-only so the backend can load and auto-refresh it.
+      - /home/joel/my_super_secure_secrets/google_auth:/app/google_auth
+    # Port 8000 on the host is taken by gohttpserver.
+    # nginx (web container) reaches the backend over the internal app-net network,
+    # so no host-port binding is needed for normal operation.
+    # Expose on 8010 only if you need direct API access for debugging.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     ports:
-      - "5437:5432"
+      - "127.0.0.1:8010:8000"
+    networks:
+      - app-net
+    depends_on:
+      dinner-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Celery worker (background tasks: emails, LLM, meal plans) ─────────────
+  celery-worker:
+    build: ./backend
+    container_name: ironskillet_worker
+    restart: unless-stopped
+    command: ["celery", "-A", "celery_app", "worker",
+              "--loglevel=info", "--concurrency=8"]
+    environment:
+      - DINNER_DB_NAME=${DINNER_DB_NAME}
+      - DINNER_DB_USER=${DINNER_DB_USER}
+      - DINNER_DB_PASSWORD=${DINNER_DB_PASSWORD}
+      - DINNER_DB_HOST=dinner-db
+      - DINNER_DB_PORT=5432
+      - FERNET_KEY=${FERNET_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://100.98.99.49:8081/v1}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - SENDER_EMAIL=${SENDER_EMAIL}
+      - GOOGLE_AUTH_PATH=/app/google_auth
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost}
+      - UPLOADS_PATH=/app/uploads
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - /home/joel/iron-skillet/uploads:/app/uploads
+      - /home/joel/my_super_secure_secrets/google_auth:/app/google_auth
+    networks:
+      - app-net
+    depends_on:
+      dinner-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Celery Beat (cron scheduler — single instance only) ───────────────────
+  celery-beat:
+    build: ./backend
+    container_name: ironskillet_beat
+    restart: unless-stopped
+    command: ["celery", "-A", "celery_app", "beat",
+              "--loglevel=info"]
+    environment:
+      - DINNER_DB_NAME=${DINNER_DB_NAME}
+      - DINNER_DB_USER=${DINNER_DB_USER}
+      - DINNER_DB_PASSWORD=${DINNER_DB_PASSWORD}
+      - DINNER_DB_HOST=dinner-db
+      - DINNER_DB_PORT=5432
+      - FERNET_KEY=${FERNET_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - REDIS_URL=redis://redis:6379/0
+    networks:
+      - app-net
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── React frontend (nginx) ─────────────────────────────────────────────────
+  web:
+    build: ./web
+    container_name: ironskillet_web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - app-net
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ── Legacy Streamlit apps (kept for reference / rollback) ─────────────────
+  # Uncomment to run alongside the new stack on different ports.
+  #
+  # frontend-legacy:
+  #   build: ./frontend
+  #   container_name: dinnerflow_ui_legacy
+  #   ports: ["8501:8501"]
+  #   ...
+  #
+  # ironskillet-legacy:
+  #   build: ./ironskillet
+  #   container_name: ironskillet_legacy
+  #   ports: ["8502:8502"]
+  #   ...
 
 networks:
-  infisical-net:
-    name: infisical-net
-    external: true
-  n8n-net:
-    name: n8n-net
-    external: true
+  app-net:
+    # Internal network shared by dinner-db, backend, and web (nginx)
+    name: ironskillet-app-net
 
 volumes:
+  redis_data:
   dinner_postgres_data:
+    # Production database volume — kept external so that `docker compose down -v`
+    # cannot accidentally destroy recipe data.
+    # If starting fresh: docker volume create dinnerflow_postgres_data
     external: true
-    name: n8n_dinner_postgres_data # <--- IMPORTANT: Match this to your 'docker volume ls' output
-  staging_dinner_postgres_data:
+    name: dinnerflow_postgres_data
