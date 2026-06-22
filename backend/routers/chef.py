@@ -10,14 +10,13 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import escape
-from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from services.search import search_recipes
 
-from auth.tokens import make_email_token, verify_email_token
+from auth.tokens import verify_email_token
 from auth.utils import decrypt_token
 from config import get_settings
 from database import get_db
@@ -26,6 +25,7 @@ from limiter import limiter
 from services import llm as llm_svc
 from services import scraper as scraper_svc
 from services import todoist as todoist_svc
+from services.llm import LLMUnavailable
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chef", tags=["chef"])
@@ -67,15 +67,19 @@ class CookRequest(BaseModel):
 # ── Shared recipe-save helper ─────────────────────────────────────────────────
 
 def _scrape_and_save_recipe(
-    conn, user_id: int, title: str, url: str, entry_method: str
+    conn, user_id: int, title: str, url: str, entry_method: str,
+    llm_timeout: float | None = None,
 ) -> dict:
     """
     Scrape url → extract via LLM → save to DB → sync Todoist → log metrics.
     Returns dict with recipe_id, ingredients, instructions, todoist_synced.
     Raises on scrape/LLM failure; Todoist errors are logged and swallowed.
+
+    ``llm_timeout`` is forwarded to the LLM extraction — request-path callers
+    (e.g. /cook) pass a short value to fail fast; the Celery task leaves it None.
     """
     cleaned_text = scraper_svc.fetch_and_clean(url)
-    extracted = llm_svc.extract_recipe(cleaned_text)
+    extracted = llm_svc.extract_recipe(cleaned_text, timeout=llm_timeout)
     ingredients = extracted.get("ingredients", [])
     instructions = extracted.get("instructions", [])
 
@@ -149,11 +153,20 @@ def instant_ideas(request: Request, conn=Depends(get_db), user=Depends(get_curre
 
     prefs = user.get("dietary_preferences") or ""
 
-    # Generate ideas via LLM
+    # Generate ideas via LLM (short request-path timeout so a stalled LLM
+    # fails fast with a friendly message instead of hanging the request).
     try:
-        ideas = llm_svc.generate_meal_ideas(prefs, favorites, n=10)
+        ideas = llm_svc.generate_meal_ideas(
+            prefs, favorites, n=10, timeout=settings.llm_request_timeout
+        )
+    except LLMUnavailable:
+        raise HTTPException(
+            status_code=503,
+            detail="The AI chef is busy right now — please try again in a moment.",
+        )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LLM error: {exc}")
+        logger.error("instant-ideas LLM error for user %d: %s", user["id"], exc)
+        raise HTTPException(status_code=502, detail="The AI returned an unexpected response.")
 
     # Enrich ideas with real recipe URLs in parallel.
     # search_recipes() tries Tavily first, falls back to DuckDuckGo automatically
@@ -186,9 +199,18 @@ def cook_recipe(request: Request, body: CookRequest, conn=Depends(get_db), user=
 
     Replaces the n8n 'Cook Tonight Workflow' and 'Selection Ingestor'.
     """
+    settings = get_settings()
     title = body.title or "Untitled Recipe"
     try:
-        saved = _scrape_and_save_recipe(conn, user["id"], title, body.url, "instant_chef")
+        saved = _scrape_and_save_recipe(
+            conn, user["id"], title, body.url, "instant_chef",
+            llm_timeout=settings.llm_request_timeout,
+        )
+    except LLMUnavailable:
+        raise HTTPException(
+            status_code=503,
+            detail="The AI chef is busy right now — please try again in a moment.",
+        )
     except Exception as exc:
         logger.error("cook failed for user %d: %s", user["id"], exc)
         raise HTTPException(status_code=502, detail="Failed to fetch or parse recipe")

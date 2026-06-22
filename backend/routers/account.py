@@ -18,7 +18,7 @@ from itsdangerous import BadSignature, SignatureExpired
 from pydantic import BaseModel
 from typing import Optional
 
-from auth.tokens import make_unsubscribe_token, verify_unsubscribe_token
+from auth.tokens import verify_unsubscribe_token
 from config import get_settings
 from database import get_db, get_connection
 from dependencies import get_current_user, invalidate_session

@@ -12,31 +12,61 @@ Main functions:
 import json
 import logging
 import re
+import time
 
-from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, OpenAI
 
 from config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Raised when the LLM endpoint is unreachable / too slow after retries. Callers on
+# the request path map this to a 503 ("AI is busy") rather than a generic 500.
+class LLMUnavailable(Exception):
+    pass
 
-def _client() -> OpenAI:
+
+def _client(timeout: float | None = None) -> OpenAI:
     settings = get_settings()
     return OpenAI(
         base_url=settings.llm_base_url,
         api_key="not-needed",       # local server doesn't require a real key
-        timeout=settings.llm_timeout,
+        timeout=timeout if timeout is not None else settings.llm_timeout,
     )
 
 
-def _chat(messages: list[dict], temperature: float = 0.1, max_tokens: int | None = None) -> str:
-    """Send a chat request and return the assistant's reply as a string."""
+def _chat(
+    messages: list[dict],
+    temperature: float = 0.1,
+    max_tokens: int | None = None,
+    timeout: float | None = None,
+) -> str:
+    """
+    Send a chat request and return the assistant's reply as a string.
+
+    ``timeout`` overrides the client timeout — request-path callers pass the short
+    ``llm_request_timeout`` so a stalled LLM fails fast. Transient connection/timeout
+    errors are retried up to ``llm_max_attempts``; exhaustion raises LLMUnavailable.
+    """
     settings = get_settings()
     kwargs = dict(model=settings.llm_model, messages=messages, temperature=temperature)
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
-    resp = _client().chat.completions.create(**kwargs)
-    return resp.choices[0].message.content.strip()
+
+    last_exc: Exception | None = None
+    for attempt in range(1, settings.llm_max_attempts + 1):
+        try:
+            resp = _client(timeout).chat.completions.create(**kwargs)
+            return resp.choices[0].message.content.strip()
+        except (APIConnectionError, APITimeoutError) as exc:
+            last_exc = exc
+            logger.warning(
+                "LLM call failed (attempt %d/%d): %s",
+                attempt, settings.llm_max_attempts, exc,
+            )
+            if attempt < settings.llm_max_attempts:
+                time.sleep(settings.llm_retry_backoff_seconds * attempt)
+    raise LLMUnavailable(str(last_exc)) from last_exc
 
 
 def _parse_json_from_reply(text: str) -> dict | list:
@@ -69,10 +99,13 @@ EXTRACT_SYSTEM_PROMPT = (
 )
 
 
-def extract_recipe(cleaned_html: str) -> dict:
+def extract_recipe(cleaned_html: str, timeout: float | None = None) -> dict:
     """
     Parse a cleaned recipe page body into structured ingredients + instructions.
     Returns {"ingredients": [...], "instructions": [...]}.
+
+    ``timeout`` is forwarded to the LLM call — request-path callers pass a short
+    value so a stalled local model fails fast (Celery callers leave it None).
     """
     # Truncate aggressively — ingredients + instructions rarely exceed 5 KB
     # Keeping input small is critical for response speed on a local LLM
@@ -85,6 +118,7 @@ def extract_recipe(cleaned_html: str) -> dict:
         ],
         temperature=0.1,
         max_tokens=800,
+        timeout=timeout,
     )
 
     try:
@@ -120,10 +154,13 @@ def generate_meal_ideas(
     dietary_preferences: str,
     favorites: list[str],
     n: int = 10,
+    timeout: float | None = None,
 ) -> list[dict]:
     """
     Ask the LLM to suggest n meal ideas based on user prefs + favorites.
     Returns list of {"title": ..., "description": ..., "search_query": ...}.
+
+    ``timeout`` is forwarded to the LLM call (request-path callers pass a short value).
     """
     favs_text = "\n".join(f"- {f}" for f in favorites[:20]) or "(none yet)"
     user_msg = (
@@ -142,6 +179,7 @@ def generate_meal_ideas(
         ],
         temperature=0.7,  # higher temp for creative variety
         max_tokens=600,
+        timeout=timeout,
     )
 
     try:
