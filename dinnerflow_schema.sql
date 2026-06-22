@@ -500,5 +500,5 @@ ALTER TABLE ONLY public.user_sessions
 
 -- Semantic-search index (migration 005). Kept here so fresh installs match.
 CREATE INDEX IF NOT EXISTS idx_recipes_embedding
-  ON public.recipes USING hnsw (embedding vector_cosine_ops);
+  ON public.recipes USING hnsw (embedding public.vector_cosine_ops);
 
