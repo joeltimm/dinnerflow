@@ -193,3 +193,49 @@ def generate_meal_ideas(
     except (json.JSONDecodeError, ValueError) as exc:
         logger.error("Failed to parse LLM ideas response: %s\nRaw: %s", exc, reply)
         raise ValueError(f"LLM returned unparseable ideas: {exc}") from exc
+
+
+# ── Embeddings (semantic search + duplicate detection) ──────────────────────────
+
+def recipe_embedding_text(title: str, ingredients: list[str], instructions: list[str]) -> str:
+    """Build the text representation of a recipe used to compute its embedding."""
+    parts = [title or ""]
+    if ingredients:
+        parts.append("Ingredients: " + "; ".join(ingredients))
+    if instructions:
+        parts.append("Instructions: " + " ".join(instructions))
+    return "\n".join(p for p in parts if p).strip()
+
+
+def generate_embedding(text: str, timeout: float | None = None) -> list[float]:
+    """
+    Return the embedding vector for ``text`` from the configured embedding model.
+
+    Retries transient connection/timeout errors; raises LLMUnavailable on exhaustion
+    so callers (or the Celery task) can react instead of storing a bad value.
+    """
+    settings = get_settings()
+    effective_timeout = timeout if timeout is not None else settings.embed_timeout
+
+    last_exc: Exception | None = None
+    for attempt in range(1, settings.llm_max_attempts + 1):
+        try:
+            resp = _client(effective_timeout).embeddings.create(
+                model=settings.embed_model,
+                input=text[:6_000],
+            )
+            return resp.data[0].embedding
+        except (APIConnectionError, APITimeoutError) as exc:
+            last_exc = exc
+            logger.warning(
+                "Embedding call failed (attempt %d/%d): %s",
+                attempt, settings.llm_max_attempts, exc,
+            )
+            if attempt < settings.llm_max_attempts:
+                time.sleep(settings.llm_retry_backoff_seconds * attempt)
+    raise LLMUnavailable(str(last_exc)) from last_exc
+
+
+def to_pgvector(vec: list[float]) -> str:
+    """Format an embedding as a pgvector literal: '[0.1,0.2,...]'."""
+    return "[" + ",".join(repr(float(x)) for x in vec) + "]"

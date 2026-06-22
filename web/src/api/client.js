@@ -37,6 +37,10 @@ export const getMe = () => api.get('/auth/me')
 // ── Recipes ───────────────────────────────────────────────────────────────────
 export const listRecipes = () => api.get('/recipes')
 
+// Natural-language semantic search across the user's cookbook.
+export const searchRecipes = (q) =>
+  api.get('/recipes/search', { params: { q } })
+
 export const getRecipe = (id) => api.get(`/recipes/${id}`)
 
 export const createRecipe = (data) => api.post('/recipes', data)

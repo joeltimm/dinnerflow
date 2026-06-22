@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   listRecipes, getRecipe, createRecipe, updateRecipe, deleteRecipe,
   updateRating, toggleFavorite, uploadImage, getRecipeHistory,
-  importRecipeFromUrl,
+  importRecipeFromUrl, searchRecipes,
 } from '../api/client'
 import { useOnboarding } from '../context/OnboardingContext'
 import RecipeCard from '../components/RecipeCard'
@@ -24,9 +24,9 @@ function UrlImportForm({ onImported, onCancel }) {
     setLoading(true)
     try {
       const res = await importRecipeFromUrl(url)
-      const { recipe_id, todoist_error } = res.data
+      const { recipe_id, todoist_error, duplicate_of } = res.data
       const full = await getRecipe(recipe_id)
-      onImported(full.data, todoist_error)
+      onImported(full.data, todoist_error, duplicate_of)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to fetch or parse recipe. Try a different URL.')
     } finally {
@@ -380,9 +380,9 @@ function QuickImport({ onImported }) {
     setLoading(true)
     try {
       const res = await importRecipeFromUrl(url)
-      const { recipe_id, todoist_error } = res.data
+      const { recipe_id, todoist_error, duplicate_of } = res.data
       const full = await getRecipe(recipe_id)
-      onImported(full.data, todoist_error)
+      onImported(full.data, todoist_error, duplicate_of)
       setUrl('')
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to fetch or parse recipe. Try a different URL.')
@@ -431,9 +431,9 @@ function StarterList({ onImported }) {
     setImporting(starter.title)
     try {
       const res = await importRecipeFromUrl(starter.url, starter.title)
-      const { recipe_id, todoist_error } = res.data
+      const { recipe_id, todoist_error, duplicate_of } = res.data
       const full = await getRecipe(recipe_id)
-      onImported(full.data, todoist_error)
+      onImported(full.data, todoist_error, duplicate_of)
     } catch (err) {
       setError(err.response?.data?.detail || `Failed to import "${starter.title}". Try another.`)
     } finally {
@@ -485,6 +485,9 @@ export default function Recipes() {
   const [search, setSearch]     = useState('')
   const [loading, setLoading]   = useState(true)
   const [importWarning, setImportWarning] = useState('')
+  const [semanticResults, setSemanticResults] = useState(null) // null = not in search mode
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState('')
 
   useEffect(() => {
     listRecipes().then((r) => {
@@ -505,11 +508,13 @@ export default function Recipes() {
     refreshOnboarding()
   }
 
-  const handleImported = (recipe, todoistError) => {
+  const handleImported = (recipe, todoistError, duplicateOf) => {
     setRecipes([recipe, ...recipes])
     setView('gallery')
-    if (todoistError) setImportWarning('Recipe saved, but Todoist sync failed. Check your integration in Settings.')
-    else setImportWarning('')
+    const msgs = []
+    if (duplicateOf) msgs.push(`Heads up — this looks similar to a recipe you already have: “${duplicateOf.title}”.`)
+    if (todoistError) msgs.push('Todoist sync failed — check your integration in Settings.')
+    setImportWarning(msgs.join(' '))
     refreshOnboarding()
   }
 
@@ -521,6 +526,34 @@ export default function Recipes() {
 
   const handleUpdate = (updated) => {
     setRecipes(recipes.map((r) => (r.id === updated.id ? updated : r)))
+  }
+
+  // Semantic search (server-side, embedding-based). Falls back gracefully on 503.
+  const runSearch = async (e) => {
+    e.preventDefault()
+    const q = search.trim()
+    if (!q) { setSemanticResults(null); setSearchError(''); return }
+    setSearching(true)
+    setSearchError('')
+    try {
+      const res = await searchRecipes(q)
+      setSemanticResults(res.data)
+    } catch (err) {
+      setSearchError(err.response?.status === 503
+        ? 'Smart search is temporarily unavailable — try again shortly.'
+        : 'Search failed. Try again.')
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const clearSearch = () => { setSearch(''); setSemanticResults(null); setSearchError('') }
+
+  // Semantic results are partial rows — fetch the full recipe for the detail view.
+  const openRecipe = async (r) => {
+    try { const full = await getRecipe(r.id); setSelected(full.data) }
+    catch { setSelected(r) }
+    setView('detail')
   }
 
   const filtered = recipes.filter((r) =>
@@ -583,16 +616,48 @@ export default function Recipes() {
         </button>
       </div>
 
-      {/* Search */}
-      <input
-        type="text"
-        placeholder="Search recipes…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="forge-input max-w-sm mb-6"
-      />
+      {/* Search — submit runs AI semantic search; typing filters the gallery by title */}
+      <form onSubmit={runSearch} className="flex gap-2 max-w-xl mb-2">
+        <input
+          type="text"
+          placeholder="Search — try a description like “something with chickpeas and lemon”"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="forge-input flex-1"
+        />
+        <button type="submit" disabled={searching} className="btn-steel px-4 py-2 text-sm whitespace-nowrap">
+          {searching ? '…' : '🔍 Smart search'}
+        </button>
+        {semanticResults !== null && (
+          <button type="button" onClick={clearSearch}
+            className="px-3 py-2 text-sm text-brand-muted hover:text-brand-silver transition-colors">
+            Clear
+          </button>
+        )}
+      </form>
+      {searchError && <p className="text-red-400 text-xs mb-4">{searchError}</p>}
+      {semanticResults !== null && !searchError && (
+        <p className="text-xs text-brand-muted mb-4">
+          Smart results for “{search.trim()}” — closest matches first.
+        </p>
+      )}
+      {!semanticResults && <div className="mb-6" />}
 
-      {loading ? (
+      {semanticResults !== null ? (
+        semanticResults.length === 0 ? (
+          <div className="text-center py-20 text-brand-muted">
+            <p className="text-4xl mb-3">🔍</p>
+            <p>No recipes matched “{search.trim()}”.</p>
+            <p className="text-xs mt-2">Only recipes with a computed embedding are searchable.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {semanticResults.map((r) => (
+              <RecipeCard key={r.id} recipe={r} onClick={() => openRecipe(r)} />
+            ))}
+          </div>
+        )
+      ) : loading ? (
         <p className="text-brand-muted animate-pulse text-sm">Loading recipes…</p>
       ) : filtered.length === 0 && search ? (
         <div className="text-center py-20 text-brand-muted">
@@ -657,7 +722,7 @@ export default function Recipes() {
             <RecipeCard
               key={r.id}
               recipe={r}
-              onClick={() => { setSelected(r); setView('detail') }}
+              onClick={() => openRecipe(r)}
             />
           ))}
         </div>

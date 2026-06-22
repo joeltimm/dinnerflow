@@ -180,6 +180,12 @@ def mocks(mocker):
         "services.llm.generate_meal_ideas",
         return_value=[{"title": "Test Dish", "description": "Tasty.", "search_query": "test dish recipe"}],
     )
+    # Non-zero default vector (cosine distance is undefined for the zero vector).
+    import services.llm as _llm_mod
+    ns._real_generate_embedding = _llm_mod.generate_embedding  # capture before patching
+    ns.generate_embedding = mocker.patch(
+        "services.llm.generate_embedding", return_value=[1.0] + [0.0] * 767
+    )
     ns.search_recipes = mocker.patch(
         "services.search.search_recipes", return_value=[{"title": "T", "url": "https://x/r"}]
     )
