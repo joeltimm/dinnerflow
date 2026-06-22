@@ -13,7 +13,6 @@ import psycopg2.extras
 from services.search import search_recipes
 
 from auth.tokens import make_email_token, make_unsubscribe_token
-from config import get_settings
 from database import get_connection
 from services import llm as llm_svc
 from services.email import send_meal_plan_email
@@ -33,8 +32,6 @@ def send_meal_plan_for_user(user_id: int, email: str, name: str) -> None:
     3. Mix in 1-2 favorites as suggestions
     4. Format + send HTML email with signed action links
     """
-    settings = get_settings()
-
     with get_connection() as conn:
         conn.cursor_factory = psycopg2.extras.RealDictCursor
         with conn.cursor() as cur:

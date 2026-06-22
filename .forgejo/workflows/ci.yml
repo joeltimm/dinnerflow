@@ -13,9 +13,37 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend — install & syntax check
+    name: Backend — lint, syntax & tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # Ephemeral Postgres for the pytest suite. pgvector image matches dinner-db
+    # (the schema enables the `vector` extension). conftest.py creates the
+    # <db>_test database and applies dinnerflow_schema.sql.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: dinneruser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: dinnerflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dinneruser"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DINNER_DB_HOST: localhost
+      DINNER_DB_PORT: "5432"
+      DINNER_DB_USER: dinneruser
+      DINNER_DB_PASSWORD: testpass
+      DINNER_DB_NAME: dinnerflow
+      # Test-only secrets (not used in production). Fernet key must be valid.
+      FERNET_KEY: 6pJWeXaTkkFaPU__nlYsU3opxkqjU-UFy0ulok0hhMI=
+      SECRET_KEY: ci-test-secret-key
 
     steps:
       - name: Checkout
@@ -30,11 +58,19 @@ jobs:
         # Proves requirements.txt resolves/installs (psycopg2-binary etc.).
         run: pip install -r backend/requirements.txt
 
+      - name: Lint (ruff)
+        working-directory: backend
+        run: ruff check .
+
       - name: Byte-compile (syntax check)
-        # No unit tests yet — tracked in issue #1 (Build an automated testing
-        # suite). compileall fails the build on any syntax error across the
-        # backend; ruff / mypy / pytest steps land with the test-suite work.
+        # Fast fail on any syntax error before the slower pytest step runs.
         run: python -m compileall -q backend
+
+      - name: Run tests (pytest)
+        working-directory: backend
+        # conftest.py points at <DINNER_DB_NAME>_test on the service Postgres and
+        # applies the repo-root schema; transaction cleanup keeps tests isolated.
+        run: python -m pytest
 
   frontend:
     name: Frontend — build

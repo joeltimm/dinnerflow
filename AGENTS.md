@@ -240,14 +240,23 @@ No existing `.cursor/rules/`, `.cursorrules`, or `.github/copilot-instructions.m
 
 ## Testing Infrastructure
 
-**Status**: No test infrastructure currently exists yet (tracked in GitHub issue #1, `joeltimm/dinnerflow`).
+**Status**: pytest suite lives in `backend/tests/` and runs in CI (`.forgejo/workflows/ci.yml`)
+alongside `ruff`. Covers the P0 paths: signed tokens, GDPR export/deletion cascade,
+auth/session lifecycle, the async scrape helper, and LLM resilience.
 
-When adding tests:
-1. Create `backend/tests/` directory with `__init__.py`
-2. Add `pytest.ini` or `[tool.pytest]` in `pyproject.toml`
-3. Use `conftest.py` for fixtures (db session, test client)
-4. Mock external services (LLM, email, Todoist) with pytest-mock
-5. Run single test: `python -m pytest backend/tests/test_module.py::test_name -v`
+- **Run all**: `docker exec -w /app ironskillet_backend python -m pytest`
+- **Run one**: `docker exec -w /app ironskillet_backend python -m pytest tests/test_tokens.py::test_email_token_round_trip -v`
+- **Lint**: `docker exec -w /app ironskillet_backend ruff check .`
+
+`conftest.py` runs against a dedicated `<db>_test` database (created + schema-applied
+automatically; prefers repo-root `dinnerflow_schema.sql`, else bundled `tests/schema.sql`).
+Each test's writes are cleaned up afterward, and `synchronous_commit=off` keeps the suite
+fast on the HDD box. External services (LLM, scraper, search, email, Todoist) are mocked by
+the autouse `mocks` fixture, so tests never hit the network.
+
+When adding tests: mock external calls via the `mocks` fixture; seed rows with
+`seed_user` / `seed_session`; regenerate `tests/schema.sql` after a schema change with
+`docker exec dinner-db pg_dump -U dinneruser -d dinnerflow --schema-only --no-owner --no-privileges > backend/tests/schema.sql`.
 
 ---
 

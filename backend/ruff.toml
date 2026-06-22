@@ -1,0 +1,11 @@
+# Ruff config for the Iron Skillet backend.
+# Focused on real defects (pyflakes F-codes) + basic pycodestyle, not style churn.
+line-length = 100
+
+# Alembic versions are generated boilerplate; scripts/ holds one-off utilities.
+extend-exclude = ["alembic/versions", "scripts"]
+
+[lint]
+select = ["E", "F", "W"]
+# E501 (line too long) is noisy on docstrings + embedded SQL/HTML; not a defect.
+ignore = ["E501"]

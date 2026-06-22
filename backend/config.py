@@ -25,7 +25,13 @@ class Settings(BaseSettings):
     # Must be set in .env or compose.yml (e.g. http://host:8081/v1)
     llm_base_url: str = ""
     llm_model: str = "gpt-4o-mini"
-    llm_timeout: int = 1200  # seconds — local model is slow; recipe extraction can take 15+ min
+    llm_timeout: int = 1200  # seconds — background (Celery) ceiling; local model is slow
+    # Tighter ceiling for calls on the HTTP request path (Instant Chef, cook) so a
+    # slow/unreachable LLM fails fast with a friendly error instead of hanging.
+    llm_request_timeout: int = 90
+    # Transient-failure retries (connection/timeout) around a single LLM call.
+    llm_max_attempts: int = 2
+    llm_retry_backoff_seconds: float = 1.0
 
     # ── Tavily (web search for recipe ideas) ──────────────────────────────────
     tavily_api_key: str = ""
