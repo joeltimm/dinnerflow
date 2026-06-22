@@ -216,7 +216,9 @@ def trigger_email_plan(request: Request, conn=Depends(get_db), user=Depends(get_
 
 
 @router.get("/select-from-email", response_class=HTMLResponse)
+@limiter.limit("10/minute")
 def select_from_email(
+    request: Request,
     token: str = Query(...),
     title: str = Query(...),
     url: str = Query(""),

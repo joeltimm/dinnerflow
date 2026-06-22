@@ -11,11 +11,21 @@ import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from html import escape
 from urllib.parse import urlencode
 
 from config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_url(url: str) -> str:
+    """Return an escaped http(s) URL safe for an href, or '' otherwise.
+    Blocks javascript:/data: and other schemes from unescaped scraped URLs."""
+    url = (url or "").strip()
+    if url.lower().startswith(("http://", "https://")):
+        return escape(url, quote=True)
+    return ""
 
 
 def _send(to: str, subject: str, html_body: str) -> None:
@@ -103,7 +113,7 @@ def send_welcome_email(to_email: str, user_name: str) -> None:
 
         <div style="padding:32px;">
           <h2 style="color:#1a1a2e; margin-top:0;">
-            Welcome, {user_name}!
+            Welcome, {escape(user_name)}!
           </h2>
           <p style="color:#444; line-height:1.6;">
             You're all set up. Here's how to get the most out of Iron Skillet:
@@ -199,13 +209,13 @@ def send_meal_plan_email(
         <div style="border:1px solid #eee; border-radius:10px; padding:20px;
                     margin-bottom:16px; background:#fff;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-            <h3 style="margin:0 0 6px; color:#1a1a2e; font-size:17px;">{r['title']}</h3>
+            <h3 style="margin:0 0 6px; color:#1a1a2e; font-size:17px;">{escape(r['title'])}</h3>
             {badge}
           </div>
           <p style="color:#666; margin:8px 0 12px; font-size:14px; line-height:1.5;">
-            {r.get('description', '')}
+            {escape(r.get('description', ''))}
           </p>
-          {'<a href="' + r["url"] + '" style="color:#999;font-size:12px;">View source</a>' if r.get("url") else ''}
+          {f'<a href="{_safe_url(r["url"])}" style="color:#999;font-size:12px;">View source</a>' if _safe_url(r.get("url", "")) else ''}
           <div style="margin-top:14px;">
             {action_html}
           </div>
@@ -226,7 +236,7 @@ def send_meal_plan_email(
         <div style="background:#1a1a2e;padding:28px 32px;text-align:center;">
           <h1 style="color:#e2b96f;margin:0;font-size:26px;">🍽️ Your Meal Plan</h1>
           <p style="color:#aaa;margin:6px 0 0;font-size:14px;">
-            Curated just for you, {user_name}
+            Curated just for you, {escape(user_name)}
           </p>
         </div>
 
