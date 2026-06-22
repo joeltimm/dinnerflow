@@ -36,7 +36,7 @@ jobs:
           --health-retries 5
 
     env:
-      DINNER_DB_HOST: localhost
+      DINNER_DB_HOST: postgres
       DINNER_DB_PORT: "5432"
       DINNER_DB_USER: dinneruser
       DINNER_DB_PASSWORD: testpass
