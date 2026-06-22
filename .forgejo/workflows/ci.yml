@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: ["main"]
+
+# Avoid wasted runs when a PR is force-pushed.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — install & syntax check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # matches backend/Dockerfile (python:3.11-slim)
+
+      - name: Install backend dependencies
+        # Proves requirements.txt resolves/installs (psycopg2-binary etc.).
+        run: pip install -r backend/requirements.txt
+
+      - name: Byte-compile (syntax check)
+        # No unit tests yet — tracked in issue #1 (Build an automated testing
+        # suite). compileall fails the build on any syntax error across the
+        # backend; ruff / mypy / pytest steps land with the test-suite work.
+        run: python -m compileall -q backend
+
+  frontend:
+    name: Frontend — build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies (lockfile-strict)
+        # Fails if package.json drift means package-lock.json wasn't regenerated.
+        run: npm ci
+
+      - name: Vite build
+        # Same `vite build` the web Docker image runs in production — fails CI on
+        # any build/import/JSX error before it reaches a deploy.
+        run: npm run build
