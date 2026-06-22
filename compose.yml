@@ -66,6 +66,12 @@ services:
       - UPLOADS_PATH=/app/uploads
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
       - REDIS_URL=redis://redis:6379/0
+      # Email via the host Postfix relay (reached over the host-gateway).
+      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
+      - SMTP_PORT=${SMTP_PORT:-25}
+      - SMTP_FROM=${SMTP_FROM:-noreply@joeltimm.dev}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # Recipe image uploads — persisted on host (set UPLOADS_HOST_PATH in .env)
       - ${UPLOADS_HOST_PATH:-./uploads}:/app/uploads
@@ -102,6 +108,10 @@ services:
     command: ["celery", "-A", "celery_app", "worker",
               "--loglevel=info", "--concurrency=8"]
     environment:
+      # Celery's worker resolves the implicit '' sys.path entry against its
+      # runtime cwd, so deferred imports like `from services.email ...` fail.
+      # Pin /app so package imports work regardless of cwd.
+      - PYTHONPATH=/app
       - DINNER_DB_NAME=${DINNER_DB_NAME}
       - DINNER_DB_USER=${DINNER_DB_USER}
       - DINNER_DB_PASSWORD=${DINNER_DB_PASSWORD}
@@ -117,6 +127,12 @@ services:
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost}
       - UPLOADS_PATH=/app/uploads
       - REDIS_URL=redis://redis:6379/0
+      # Email via the host Postfix relay (the worker is what actually sends).
+      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
+      - SMTP_PORT=${SMTP_PORT:-25}
+      - SMTP_FROM=${SMTP_FROM:-noreply@joeltimm.dev}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ${UPLOADS_HOST_PATH:-./uploads}:/app/uploads
       - ${GOOGLE_AUTH_HOST_PATH:?Set GOOGLE_AUTH_HOST_PATH in .env}:/app/google_auth:ro
@@ -137,6 +153,7 @@ services:
     command: ["celery", "-A", "celery_app", "beat",
               "--loglevel=info"]
     environment:
+      - PYTHONPATH=/app
       - DINNER_DB_NAME=${DINNER_DB_NAME}
       - DINNER_DB_USER=${DINNER_DB_USER}
       - DINNER_DB_PASSWORD=${DINNER_DB_PASSWORD}

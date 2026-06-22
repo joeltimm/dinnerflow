@@ -30,7 +30,16 @@ class Settings(BaseSettings):
     # ── Tavily (web search for recipe ideas) ──────────────────────────────────
     tavily_api_key: str = ""
 
-    # ── Gmail OAuth (mirrors calendar_bot pattern) ────────────────────────────
+    # ── Email / SMTP (relay through the host Postfix, which smarthosts via Gmail)
+    # The host's mynetworks trusts the container subnet, so no auth/TLS is needed
+    # on this hop — Postfix handles TLS + auth upstream to smtp.gmail.com.
+    smtp_host: str = "host.docker.internal"
+    smtp_port: int = 25
+    # From address on outbound mail. Must be a verified send-as on the relay's
+    # Google account (joeltimm.dev is already verified — Infisical sends as it).
+    smtp_from: str = "noreply@joeltimm.dev"
+
+    # ── Gmail OAuth (legacy — superseded by the SMTP relay above) ──────────────
     # Path to directory containing token_{suffix}.json files
     google_auth_path: str = "/app/google_auth"
     # Full email address used to send mail (e.g. joeltimm@gmail.com)

@@ -118,8 +118,10 @@ export const clearCheckedItems = () => api.delete('/shopping/checked')
 // ── Account ───────────────────────────────────────────────────────────────────
 export const getEmailPreferences = () => api.get('/account/email-preferences')
 
-export const updateEmailPreferences = (email_consent) =>
-  api.put('/account/email-preferences', { email_consent })
+// email_days (ISO Mon=1..Sun=7) is optional; omit it to leave the selection unchanged.
+export const updateEmailPreferences = (email_consent, email_days) =>
+  api.put('/account/email-preferences',
+    email_days === undefined ? { email_consent } : { email_consent, email_days })
 
 export const exportAccountData = () =>
   api.get('/account/export-data', { responseType: 'blob' })

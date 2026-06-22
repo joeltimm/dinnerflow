@@ -103,13 +103,24 @@ export default function Settings() {
   }
 
   // ── Email preferences ───────────────────────────────────────────────────────
+  // Weekdays use ISO numbering: Mon=1 … Sun=7.
+  const WEEKDAYS = [
+    { n: 1, label: 'Mon' }, { n: 2, label: 'Tue' }, { n: 3, label: 'Wed' },
+    { n: 4, label: 'Thu' }, { n: 5, label: 'Fri' }, { n: 6, label: 'Sat' },
+    { n: 7, label: 'Sun' },
+  ]
   const [emailConsent, setEmailConsent] = useState(false)
+  const [emailDays, setEmailDays]       = useState([])
   const [emailLoading, setEmailLoading] = useState(true)
   const [emailSaving, setEmailSaving]   = useState(false)
 
   useEffect(() => {
     getEmailPreferences()
-      .then((r) => { setEmailConsent(r.data.email_consent); setEmailLoading(false) })
+      .then((r) => {
+        setEmailConsent(r.data.email_consent)
+        setEmailDays(r.data.email_days || [])
+        setEmailLoading(false)
+      })
       .catch(() => setEmailLoading(false))
   }, [])
 
@@ -117,8 +128,23 @@ export default function Settings() {
     setEmailSaving(true)
     try {
       const next = !emailConsent
-      await updateEmailPreferences(next)
+      await updateEmailPreferences(next)   // leaves email_days unchanged
       setEmailConsent(next)
+    } finally {
+      setEmailSaving(false)
+    }
+  }
+
+  const toggleEmailDay = async (n) => {
+    const next = emailDays.includes(n)
+      ? emailDays.filter((d) => d !== n)
+      : [...emailDays, n].sort((a, b) => a - b)
+    setEmailDays(next)               // optimistic
+    setEmailSaving(true)
+    try {
+      await updateEmailPreferences(emailConsent, next)
+    } catch {
+      setEmailDays(emailDays)         // revert on failure
     } finally {
       setEmailSaving(false)
     }
@@ -322,19 +348,55 @@ export default function Settings() {
         {emailLoading ? (
           <p className="text-brand-muted text-sm animate-pulse">Loading...</p>
         ) : (
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={emailConsent}
-              onChange={toggleEmailConsent}
-              disabled={emailSaving}
-              className="accent-brand-gold w-4 h-4"
-            />
-            <span className="text-sm text-brand-silver">
-              Receive weekly meal plan emails (Tue &amp; Sat)
-            </span>
-            {emailSaving && <span className="text-brand-muted text-xs animate-pulse">Saving...</span>}
-          </label>
+          <>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={emailConsent}
+                onChange={toggleEmailConsent}
+                disabled={emailSaving}
+                className="accent-brand-gold w-4 h-4"
+              />
+              <span className="text-sm text-brand-silver">
+                Receive meal plan emails
+              </span>
+              {emailSaving && <span className="text-brand-muted text-xs animate-pulse">Saving...</span>}
+            </label>
+
+            {/* Day-of-week selection — only meaningful while subscribed */}
+            <div className={emailConsent ? 'mt-4' : 'mt-4 opacity-50 pointer-events-none'}>
+              <p className="text-xs uppercase tracking-widest text-brand-muted mb-2">
+                Send on these days
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {WEEKDAYS.map(({ n, label }) => {
+                  const on = emailDays.includes(n)
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => toggleEmailDay(n)}
+                      disabled={emailSaving || !emailConsent}
+                      aria-pressed={on}
+                      className={
+                        'px-3 py-1.5 rounded-md text-sm font-bold border transition-colors ' +
+                        (on
+                          ? 'bg-brand-gold text-brand-bg border-brand-gold'
+                          : 'bg-transparent text-brand-silver border-brand-border hover:border-brand-gold')
+                      }
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-brand-muted mt-2">
+                {emailDays.length === 0
+                  ? 'No days selected — you won’t receive meal plan emails.'
+                  : `Delivered around 10:30 AM on the highlighted day${emailDays.length > 1 ? 's' : ''}.`}
+              </p>
+            </div>
+          </>
         )}
       </section>
 

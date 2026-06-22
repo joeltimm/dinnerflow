@@ -52,6 +52,9 @@ def send_meal_plan_for_user(user_id: int, email: str, name: str) -> None:
             favorites = [dict(r) for r in cur.fetchall()]
 
     recipes: list[dict] = []
+    fav_names = [f["title"] for f in favorites]
+    target = 5
+    seen_urls: set[str] = set()
 
     # Add 1 favorite as a reminder
     if favorites:
@@ -63,55 +66,71 @@ def send_meal_plan_for_user(user_id: int, email: str, name: str) -> None:
             "is_favorite": True,
         })
 
-    # Find new recipe ideas via web search.
-    # search_recipes() tries Tavily first, falls back to DuckDuckGo automatically
-    # on any failure (no key, quota exceeded, 429, network error, etc.).
-    # If both fail, we fall back further to LLM-only ideas without URLs.
-    fav_names = [f["title"] for f in favorites]
-    prefs_clause = f" that are {prefs}" if prefs else ""
-    fav_clause = f" (user likes: {', '.join(fav_names[:3])})" if fav_names else ""
+    # LLM-first idea generation: the model returns clean recipe titles +
+    # descriptions, then we use web search ONLY to attach a real recipe URL.
+    # (Search-first produced garbage cards — web-page titles like "… - Facebook"
+    # and snippet text instead of an actual recipe name.)
+    try:
+        ideas = llm_svc.generate_meal_ideas(prefs, fav_names, n=target - len(recipes) + 2)
+    except Exception as exc:
+        logger.error("LLM meal idea generation failed: %s", exc)
+        ideas = []
 
-    queries = [
-        f"easy healthy dinner recipe{prefs_clause}",
-        f"quick weeknight meal idea{prefs_clause}{fav_clause}",
-        f"30-minute dinner recipe{prefs_clause}",
-    ]
-
-    seen_urls: set[str] = set()
-    search_succeeded = False
-
-    for query in queries:
-        if len(recipes) >= 5:
+    for idea in ideas:
+        if len(recipes) >= target:
             break
-        results = search_recipes(query, max_results=2)
-        if results:
-            search_succeeded = True
-        for r in results:
-            url = r.get("url", "")
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                recipes.append({
-                    "title": r["title"] or "New Recipe Idea",
-                    "url": url,
-                    "description": r["description"],
-                    "is_favorite": False,
-                })
-
-    if not search_succeeded:
-        # Both Tavily and DuckDuckGo failed — ask the LLM to suggest ideas.
-        # These won't have URLs, but the email still delivers value.
-        logger.warning("All web search backends failed — using LLM-only fallback for meal plan")
+        title = (idea.get("title") or "").strip()
+        if not title:
+            continue
+        description = (idea.get("description") or "").strip()
+        query = idea.get("search_query") or f"{title} recipe"
+        url = ""
         try:
-            ideas = llm_svc.generate_meal_ideas(prefs, fav_names, n=4)
-            for idea in ideas:
-                recipes.append({
-                    "title": idea["title"],
-                    "url": "",
-                    "description": idea.get("description", ""),
-                    "is_favorite": False,
-                })
+            results = search_recipes(query, max_results=1)
         except Exception as exc:
-            logger.error("LLM fallback for meal plan also failed: %s", exc)
+            logger.warning("Recipe URL search failed for '%s': %s", title, exc)
+            results = []
+        if results:
+            url = results[0].get("url", "") or ""
+            # Keep the LLM's title/description; only borrow a snippet if missing.
+            if not description:
+                description = results[0].get("description", "") or ""
+        if url:
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+        recipes.append({
+            "title": title,
+            "url": url,
+            "description": description,
+            "is_favorite": False,
+        })
+
+    # Last-resort fallback: LLM unavailable AND we have nothing but maybe a
+    # favorite — pull a couple of raw search hits so the email still delivers.
+    if len(recipes) <= (1 if favorites else 0):
+        logger.warning("No LLM ideas — falling back to raw web search for meal plan")
+        prefs_clause = f" that are {prefs}" if prefs else ""
+        for query in (
+            f"easy healthy dinner recipe{prefs_clause}",
+            f"quick weeknight meal idea{prefs_clause}",
+        ):
+            if len(recipes) >= target:
+                break
+            try:
+                results = search_recipes(query, max_results=2)
+            except Exception:
+                results = []
+            for r in results:
+                url = r.get("url", "")
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    recipes.append({
+                        "title": r.get("title") or "New Recipe Idea",
+                        "url": url,
+                        "description": r.get("description", ""),
+                        "is_favorite": False,
+                    })
 
     if not recipes:
         logger.warning("No recipes to send for user %d — skipping email", user_id)

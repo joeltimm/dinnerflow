@@ -1,0 +1,77 @@
+name: Security Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    # Security-relevant surfaces only — an OWASP scan on a docs/UI-only PR
+    # is filler. These are the paths where a security regression can land:
+    # auth, tokens, secrets/config, the admin + GDPR surfaces, encrypted
+    # third-party tokens, the SMTP path, and dependency manifests (CVEs).
+    paths:
+      - "backend/auth/**"
+      - "backend/config.py"
+      - "backend/dependencies.py"
+      - "backend/limiter.py"
+      - "backend/routers/account.py"
+      - "backend/routers/admin.py"
+      - "backend/services/email.py"
+      - "backend/services/todoist.py"
+      - "backend/requirements.txt"
+      - "web/package.json"
+      - "web/package-lock.json"
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+      id-token: write
+    # See claude-auto-review.yml: route API writes to the Forgejo container
+    # on the docker bridge, bypassing Cloudflare's managed challenge.
+    env:
+      GITHUB_API_URL: http://172.21.0.4:3000/api/v1
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      # Forgejo-compatible fork of anthropics/claude-code-action (instance mirror).
+      - uses: https://git.joeltimm.dev/joelrocks/claude-code-action@main
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          platform: "forgejo"
+          github_token: ${{ secrets.CLAUDE_BOT_TOKEN }}
+          bot_id: "2"
+          bot_name: "claude-bot"
+          bot_email: "claude-bot@git.joeltimm.dev"
+          track_progress: "true"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Perform a comprehensive security review of this FastAPI + React app.
+
+            ## OWASP Top 10 Analysis
+            - SQL injection (this codebase uses psycopg2 with raw SQL — verify
+              every query is parameterized; flag any string-built SQL)
+            - Cross-Site Scripting (XSS) — including server-rendered HTML emails
+              and the select-from-email confirmation pages
+            - Broken authentication / session handling (session cookies, bcrypt)
+            - Sensitive data exposure
+            - Broken access control (per-user scoping on every query; admin gates)
+            - Security misconfiguration (CORS, cookie flags, rate limits)
+            - CSRF
+            - Components with known vulnerabilities (dependency bumps)
+            - Insufficient logging & monitoring
+
+            ## Additional Checks
+            - Hardcoded secrets or credentials
+            - HMAC-signed email tokens and Fernet-encrypted Todoist tokens used correctly
+            - Secrets (tokens, passwords) never written to logs
+            - SSRF via the recipe URL scraper / LLM / search calls
+            - Unsafe deserialization; race conditions / TOCTOU
+
+            Rate severity as: CRITICAL, HIGH, MEDIUM, LOW, or NONE.
+            Post detailed findings with recommendations.

@@ -55,26 +55,72 @@ def send_meal_plan_for_user(user_id: int, email: str, name: str):
 @app.task(name="tasks.send_all_meal_plans", ignore_result=True)
 def send_all_meal_plans():
     """
-    Scheduled job (Tue/Sat 10:30 AM): fan out meal plan emails to all users.
+    Scheduled job (daily 10:30 AM Chicago): fan out meal plan emails.
 
-    Instead of processing users sequentially (which takes hours at scale),
-    this enqueues one send_meal_plan_for_user task per user. Celery workers
-    process them in parallel.
+    Beat fires every day; each user receives mail only on the weekdays they
+    chose (users.email_days, ISO Mon=1..Sun=7). We compute "today" in the
+    app's timezone so the weekday matches the 10:30 AM local send time.
+
+    Enqueues one send_meal_plan_for_user task per matching user so Celery
+    workers process them in parallel rather than sequentially.
     """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     _ensure_pool()
-    logger.info("Scheduled meal plan run — fanning out to workers...")
+    today_iso = datetime.now(ZoneInfo("America/Chicago")).isoweekday()
+    logger.info("Scheduled meal plan run (weekday=%d) — fanning out...", today_iso)
 
     with get_connection() as conn:
         conn.cursor_factory = psycopg2.extras.RealDictCursor
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, email, full_name FROM users WHERE email_consent = true"
+                "SELECT id, email, full_name FROM users "
+                "WHERE email_consent = true AND %s = ANY(email_days)",
+                (today_iso,),
             )
             users = [dict(r) for r in cur.fetchall()]
 
     logger.info("Enqueuing meal plan tasks for %d users", len(users))
     for u in users:
         send_meal_plan_for_user.delay(u["id"], u["email"], u.get("full_name", "Chef"))
+
+
+# ── Recipe tasks ──────────────────────────────────────────────────────────────
+
+@app.task(name="tasks.scrape_and_save_recipe", ignore_result=True, max_retries=2)
+def scrape_and_save_recipe(user_id: int, title: str, url: str):
+    """
+    Background scrape + save for 'Add to My Recipes' email clicks.
+
+    Runs the slow work (fetch page → LLM extract → save → Todoist sync) off the
+    request path so the email click returns instantly. Imported lazily to avoid
+    a circular import at module load.
+    """
+    from routers.chef import _scrape_and_save_recipe
+
+    _ensure_pool()
+    try:
+        with get_connection() as conn:
+            conn.cursor_factory = psycopg2.extras.RealDictCursor
+            # Idempotency guard: a retry (max_retries=2) after a committed insert
+            # would otherwise create a duplicate. Skip if this user already has
+            # the recipe from a prior attempt.
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM recipes WHERE user_id = %s AND source_url = %s LIMIT 1",
+                    (user_id, url),
+                )
+                if cur.fetchone():
+                    logger.info(
+                        "Recipe already saved for user %d (%s) — skipping", user_id, url
+                    )
+                    return
+            _scrape_and_save_recipe(conn, user_id, title, url, "email_select")
+        logger.info("Saved recipe '%s' for user %d from email select", title, user_id)
+    except Exception as exc:
+        logger.error("Async recipe save failed for user %d (%s): %s", user_id, url, exc)
+        raise scrape_and_save_recipe.retry(exc=exc, countdown=20)
 
 
 @app.task(name="tasks.cleanup_sessions", ignore_result=True)

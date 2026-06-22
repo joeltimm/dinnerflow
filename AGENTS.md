@@ -204,13 +204,14 @@ const recipes = await apiClient.getRecipes();
 - **auth/tokens.py**: Signed token utilities for email action links and unsubscribe links (shared by routers and services)
 - **services/llm.py**: Recipe extraction from URLs + meal idea generation
 - **services/search.py**: Tavily + DuckDuckGo recipe search
-- **services/scheduler.py**: Meal plan builder (called by Celery tasks)
-- **services/todoist.py**: Todoist API integration for shopping lists
-- **celery_app.py**: Celery broker config + beat schedule (meal plans Tue/Sat, session cleanup daily 3 AM, disk/DB monitoring daily 4 AM)
-- **tasks.py**: Background task definitions (welcome email, meal plans, session cleanup, disk/DB usage check)
+- **services/scheduler.py**: Meal plan builder — LLM-first ideas (clean titles), then search only for URLs; called by Celery tasks
+- **services/email.py**: Outbound email via an SMTP relay (smtplib + STARTTLS to a host Postfix; NOT the Gmail API). `SMTP_HOST`/`SMTP_PORT`/`SMTP_FROM`
+- **services/todoist.py**: Todoist sync — adds recipe ingredients as tasks (todoist-api-python **v4**, unified `api/v1`). The v4 client closes its httpx client on GC, so always use it inside `with _api(token) as api:`
+- **celery_app.py**: Celery broker config + beat schedule (meal plans **daily 10:30 CT**, fanned out only to consented users whose per-user `email_days` include today; session cleanup daily 3 AM, disk/DB monitoring daily 4 AM)
+- **tasks.py**: Background task definitions (welcome email, meal plans, **async recipe scrape+save** from email "Add to My Recipes" clicks, session cleanup, disk/DB usage check)
 
 ### Ops Infrastructure
-- **Alembic** (`backend/alembic/`): Raw SQL database migrations. No SQLAlchemy ORM — uses `op.execute()` for DDL
+- **Migrations**: incremental schema changes are plain SQL in `backend/migrations/` (e.g. `003_email_days.sql`), idempotent (`ADD COLUMN IF NOT EXISTS`), applied via `psql`. An **Alembic** harness (`backend/alembic/`) also exists for revision tracking — raw SQL, no ORM (`op.execute()`)
 - **Backup scripts** (`scripts/`): `backup-db.sh` (daily pg_dump + rotation) and `restore-db.sh` (interactive restore)
 - **Log rotation**: All containers use `json-file` driver with 10 MB / 3 file rotation (compose.yml `x-logging` anchor)
 - **Health endpoint** (`/health`): Reports DB connectivity + size, disk usage %. Returns `"degraded"` on failures
@@ -239,7 +240,7 @@ No existing `.cursor/rules/`, `.cursorrules`, or `.github/copilot-instructions.m
 
 ## Testing Infrastructure
 
-**Status**: No test infrastructure currently exists.
+**Status**: No test infrastructure currently exists yet (tracked in GitHub issue #1, `joeltimm/dinnerflow`).
 
 When adding tests:
 1. Create `backend/tests/` directory with `__init__.py`
@@ -253,9 +254,10 @@ When adding tests:
 ## Environment Setup
 
 - `.env` file required at project root (see `.env.example`)
-- Gmail OAuth token directory mounted at `/app/google_auth/` in the backend container (read-only via `GOOGLE_AUTH_HOST_PATH`)
+- Email sends via an SMTP relay reached over the Docker host-gateway: `SMTP_HOST` (default `host.docker.internal`, requires `extra_hosts: ["host.docker.internal:host-gateway"]`), `SMTP_PORT`, `SMTP_FROM`. The legacy Gmail-API path (`/app/google_auth` mount via `GOOGLE_AUTH_HOST_PATH`, `SENDER_EMAIL`) is left in place but unused.
 - Recipe uploads mounted via `UPLOADS_HOST_PATH` (defaults to `./uploads`)
-- Key env vars: `LLM_BASE_URL`, `TAVILY_API_KEY`, `GOOGLE_AUTH_HOST_PATH`, `SENDER_EMAIL`, `FERNET_KEY`, `SECRET_KEY`
+- Key env vars: `LLM_BASE_URL`, `LLM_MODEL`, `TAVILY_API_KEY`, `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM`, `APP_BASE_URL` (public URL — must not be `localhost` or email links break), `CORS_ORIGINS`, `FERNET_KEY`, `SECRET_KEY`
+- The Celery worker and beat need `PYTHONPATH=/app` (the `celery` CLI doesn't put cwd on `sys.path`, so deferred imports like `from services.email …` fail without it)
 - Todoist tokens are per-user, stored Fernet-encrypted in the `user_integrations` table (no env var)
 
 ---

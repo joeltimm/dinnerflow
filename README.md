@@ -25,8 +25,8 @@ FastAPI backend + React frontend + PostgreSQL. AI scraping, recipe extraction, w
 - **Tonight** — Smart pick for what to cook now based on cook history; log it with a rating. New users see a welcome hero with getting-started guidance
 - **Shopping List** — Manual grocery list with check-off and clear-checked actions
 - **Dashboard** — Most-cooked and highest-rated charts; recipe, cook, and favourite counts. Empty state shows motivational message with CTAs instead of zeros
-- **Weekly email plan** — Scheduled Tue/Sat 10:30 AM (opt-in only); also triggerable on demand. Emails a personalized meal plan with one-click "Add to My Recipes" links and an unsubscribe link
-- **Settings** — Dietary preferences; Todoist integration (encrypted token, syncs ingredients on cook); email preferences toggle; data export; account deletion
+- **Weekly email plan** — Opt-in meal plan emails delivered 10:30 AM on the weekdays each user picks (any combination Mon–Sun; defaults to Tue + Sat); also triggerable on demand. Ideas are generated LLM-first (clean recipe titles) and enriched with a real recipe URL. One-click "Add to My Recipes" links save the recipe asynchronously in the background; includes an unsubscribe link
+- **Settings** — Dietary preferences; Todoist integration (encrypted token, syncs ingredients on cook); email preferences (subscribe + choose delivery days); data export; account deletion
 - **Privacy & compliance** — Email opt-in consent at registration, one-click unsubscribe, GDPR data export/deletion, privacy policy page, cookie notice, automated data retention cleanup
 
 ---
@@ -59,13 +59,17 @@ dinnerflow/
 │   │   ├── shopping.py          # /api/shopping — shopping list CRUD
 │   │   └── tonight.py           # /api/tonight — smart pick, cooking log
 │   ├── services/
-│   │   ├── email.py             # Gmail send (OAuth, mirrors calendar_bot)
+│   │   ├── email.py             # Email send via SMTP relay (smtplib + STARTTLS)
 │   │   ├── llm.py               # Recipe extraction + meal idea generation
 │   │   ├── scheduler.py         # Meal plan builder (called by Celery tasks)
 │   │   ├── scraper.py           # URL fetch + HTML cleaning
 │   │   ├── search.py            # Tavily (+ DuckDuckGo fallback) recipe search
 │   │   └── todoist.py           # Todoist API — sync ingredients as tasks
-│   ├── alembic/                 # Database migrations (Alembic)
+│   ├── migrations/              # Incremental schema changes as plain SQL (applied via psql)
+│   │   ├── 001_add_indexes.sql
+│   │   ├── 002_compliance.sql
+│   │   └── 003_email_days.sql   # per-user meal-plan delivery weekdays
+│   ├── alembic/                 # Alembic harness for revision tracking (raw SQL, no ORM)
 │   │   ├── env.py
 │   │   └── versions/            # Migration scripts (001_baseline, 002_add_indexes, ...)
 │   ├── alembic.ini
@@ -92,8 +96,9 @@ dinnerflow/
 ### Prerequisites
 
 - Docker & Docker Compose
-- Gmail OAuth token for email (see below)
-- Tavily API key for recipe web search
+- An SMTP relay for outbound email (see step 3) — e.g. a host Postfix that smarthosts via Gmail
+- A local OpenAI-compatible LLM endpoint (e.g. llama.cpp / LM Studio / Ollama)
+- Tavily API key for recipe web search (optional — DuckDuckGo is the fallback)
 
 ### 1. Generate secret keys
 
@@ -122,31 +127,36 @@ DINNER_DB_PASSWORD=changeme
 FERNET_KEY=<generated above>
 SECRET_KEY=<generated above>
 
-LLM_BASE_URL=http://your-llm-host:8081/v1   # local OpenAI-compatible endpoint
-LLM_MODEL=gpt-4o-mini
+LLM_BASE_URL=http://your-llm-host:8080/v1   # local OpenAI-compatible endpoint
+LLM_MODEL=<model id as the server reports it in /v1/models>
 
-TAVILY_API_KEY=<your key>
+TAVILY_API_KEY=<your key>            # optional; DuckDuckGo is used as fallback
 
-SENDER_EMAIL=you@gmail.com
+# Email via SMTP relay (see step 3)
+SMTP_HOST=host.docker.internal       # the host running Postfix, reached via host-gateway
+SMTP_PORT=25
+SMTP_FROM=noreply@your-domain
 
 # Host paths — mounted into containers by compose.yml
-GOOGLE_AUTH_HOST_PATH=/path/to/google_auth   # directory containing token_<suffix>.json
 # UPLOADS_HOST_PATH=./uploads               # defaults to ./uploads if not set
 
-APP_BASE_URL=http://your-domain-or-ip
-CORS_ORIGINS=http://your-domain-or-ip
+APP_BASE_URL=https://your-domain-or-ip   # used to build clickable links in emails
+CORS_ORIGINS=https://your-domain-or-ip
 ```
 
-### 3. Gmail OAuth (one-time)
+> **Email link note:** `APP_BASE_URL` must be the public URL users reach (not `localhost`),
+> or the "Add to My Recipes" / unsubscribe links in emails won't work when clicked.
 
-The backend reuses an existing Gmail token if you have one (e.g. from `calendar_bot`). To generate a fresh token:
+### 3. Email (SMTP relay)
 
-```bash
-cd backend
-python scripts/generate_gmail_token.py
-```
+The backend sends mail over plain SMTP to a relay (`SMTP_HOST:SMTP_PORT`), using STARTTLS
+if the relay offers it. The reference setup is a **host Postfix** that smarthosts via Gmail:
+the container subnet is trusted in Postfix `mynetworks`, so no auth is needed on this hop and
+Postfix handles TLS + auth upstream. Set `SMTP_FROM` to a verified send-as address for your
+domain. No OAuth tokens required.
 
-The token file must include the `gmail.send` scope.
+> A legacy Gmail-API path exists (`scripts/generate_gmail_token.py`, `SENDER_EMAIL`,
+> `GOOGLE_AUTH_HOST_PATH`) but is superseded by the SMTP relay above.
 
 ### 4. Docker volume
 
@@ -181,7 +191,7 @@ Add a daily cron job for automated database backups:
 ```bash
 crontab -e
 # Add this line:
-0 2 * * * /home/joel/dinnerflow/scripts/backup-db.sh >> /home/joel/dinnerflow/backups/backup.log 2>&1
+0 2 * * * /home/joel/ironskillet/scripts/backup-db.sh >> /home/joel/ironskillet/backups/backup.log 2>&1
 ```
 
 Backups are saved to `backups/` with 7 daily + 4 weekly rotation. To customize the backup location:
@@ -195,7 +205,7 @@ BACKUP_DIR=/mnt/nas/dinnerflow-backups ./scripts/backup-db.sh
 ## Database Schema
 
 ```
-users            — accounts (email, password_hash, dietary_preferences, email_consent)
+users            — accounts (email, password_hash, dietary_preferences, email_consent, email_days)
 recipes          — cookbook (title, source_url, ingredients jsonb, instructions jsonb, rating, is_favorite)
 cooking_log      — per-session cook history (recipe_id, date_cooked, rating)
 user_integrations — third-party tokens (Todoist API token — Fernet encrypted)
@@ -214,9 +224,18 @@ psql -h localhost -p 5436 -U $DINNER_DB_USER -d $DINNER_DB_NAME \
 
 See [SCHEMA.md](SCHEMA.md) for a full table-by-table reference.
 
-### Migrations (Alembic)
+### Migrations
 
-Schema changes are tracked with [Alembic](https://alembic.sqlalchemy.org/) using raw SQL migrations (no SQLAlchemy ORM). Migrations live in `backend/alembic/versions/`.
+Incremental schema changes are kept as plain SQL files in `backend/migrations/`
+(e.g. `002_compliance.sql`, `003_email_days.sql`) and applied directly with `psql`.
+They are idempotent (`ADD COLUMN IF NOT EXISTS`, etc.), so re-running is safe:
+
+```bash
+docker exec -i dinner-db psql -U $DINNER_DB_USER -d $DINNER_DB_NAME \
+  < backend/migrations/003_email_days.sql
+```
+
+An Alembic harness also exists in `backend/alembic/` for revision tracking (raw SQL, no ORM):
 
 ```bash
 # Check current revision
@@ -238,17 +257,27 @@ docker compose exec backend alembic downgrade -1
 
 ### Weekly meal plan email
 
-Celery Beat triggers every Tuesday and Saturday at 10:30 AM. For each consented user it:
-1. Fetches the user's `search_terms` from the DB
-2. Asks the LLM to generate meal ideas
-3. Enriches each idea with a real recipe URL via Tavily
-4. Sends an HTML email with one-click "Add to My Recipes" links (HMAC-signed, 7-day expiry)
+Celery Beat triggers **daily at 10:30 AM** (`America/Chicago`). `send_all_meal_plans` selects
+consented users whose chosen weekdays (`users.email_days`, ISO Mon=1…Sun=7) include today, and
+fans out one task per user. For each user it:
+1. Asks the LLM to generate meal ideas (clean recipe titles + descriptions + a search query)
+2. Enriches each idea with a real recipe URL via web search — keeping the LLM's title/description
+3. Sends an HTML email (via the SMTP relay) with one-click "Add to My Recipes" links (HMAC-signed, 7-day expiry)
+
+Each email mixes the user's top saved favourite (one reminder card) with the generated ideas. The
+favourite card links to **View in Iron Skillet** (`/recipes`) since it's already saved — only the
+AI-pick cards carry the "Add to My Recipes" action, so a favourite can't be re-imported as a duplicate.
 
 The same flow can be triggered manually via `POST /api/chef/email-plan`.
 
+When a user clicks "Add to My Recipes", `GET /api/chef/select-from-email` verifies the signed
+token, **enqueues a background `scrape_and_save_recipe` task, and returns an instant confirmation
+page** — the slow scrape + LLM extraction + save + Todoist sync happen on the worker, so the click
+never blocks (and can't hit a proxy timeout).
+
 ### Instant Chef
 
-1. `POST /api/chef/instant-ideas` — LLM generates ideas, Tavily finds URLs
+1. `POST /api/chef/instant-ideas` — LLM generates ideas, web search finds URLs
 2. User selects one → `POST /api/chef/cook` — scrapes the URL, extracts recipe via LLM, saves to DB, syncs to Todoist
 
 ---
@@ -294,7 +323,7 @@ All containers use Docker's `json-file` log driver with 10 MB max size and 3-fil
 - **Data export**: `GET /api/account/export-data` — downloads all user data as JSON (also available in Settings UI)
 - **Self-service deletion**: `DELETE /api/account/delete` with `{"confirm": true}` (also available in Settings UI)
 - **Admin deletion**: `DELETE /api/admin/users/{id}`
-- **Email preferences**: `GET/PUT /api/account/email-preferences` — opt-in/out of meal plan emails (Settings UI toggle)
+- **Email preferences**: `GET/PUT /api/account/email-preferences` — opt-in/out of meal plan emails and choose delivery weekdays (`email_days`, ISO Mon=1…Sun=7); Settings UI has a subscribe toggle + Mon–Sun picker
 - **One-click unsubscribe**: `GET /api/account/unsubscribe?token=...` — signed link in every email, no login required
 - **Privacy policy**: Served at `/privacy` (public page)
 - **Cookie notice**: Dismissible banner on first visit (functional session cookie only, no tracking)
@@ -305,7 +334,7 @@ Deletion cascades through all tables (recipes, cooking log, shopping list, sessi
 
 | Task | Schedule | Description |
 | :--- | :--- | :--- |
-| `send_all_meal_plans` | Tue/Sat 10:30 AM | Fan-out weekly meal plan emails to consented users |
+| `send_all_meal_plans` | Daily 10:30 AM | Fan-out meal plan emails to consented users whose `email_days` include today |
 | `cleanup_sessions` | Daily 3:00 AM | Purge expired session tokens |
 | `check_disk_and_db_usage` | Daily 4:00 AM | Log disk + DB size, warn at 80%/90% |
 | `cleanup_stale_data` | Sunday 4:30 AM | Data retention: delete search terms and sync logs older than `data_retention_days` (default 90) |
