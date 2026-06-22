@@ -109,20 +109,50 @@ export default function Settings() {
     { n: 4, label: 'Thu' }, { n: 5, label: 'Fri' }, { n: 6, label: 'Sat' },
     { n: 7, label: 'Sun' },
   ]
+  // A short, friendly list of common zones; the backend accepts any IANA name.
+  const TIMEZONES = [
+    'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+    'America/Anchorage', 'Pacific/Honolulu', 'UTC', 'Europe/London', 'Europe/Paris',
+    'Europe/Berlin', 'Asia/Kolkata', 'Asia/Tokyo', 'Australia/Sydney',
+  ]
   const [emailConsent, setEmailConsent] = useState(false)
   const [emailDays, setEmailDays]       = useState([])
   const [emailLoading, setEmailLoading] = useState(true)
   const [emailSaving, setEmailSaving]   = useState(false)
+  const [timezone, setTimezone]         = useState('America/Chicago')
+  const [mealHour, setMealHour]         = useState(10)
+  const [mealMinute, setMealMinute]     = useState(30)
+  const [timeSaved, setTimeSaved]       = useState(false)
 
   useEffect(() => {
     getEmailPreferences()
       .then((r) => {
         setEmailConsent(r.data.email_consent)
         setEmailDays(r.data.email_days || [])
+        if (r.data.timezone_name) setTimezone(r.data.timezone_name)
+        if (r.data.meal_plan_hour != null) setMealHour(r.data.meal_plan_hour)
+        if (r.data.meal_plan_minute != null) setMealMinute(r.data.meal_plan_minute)
         setEmailLoading(false)
       })
       .catch(() => setEmailLoading(false))
   }, [])
+
+  const saveDeliveryTime = async () => {
+    setEmailSaving(true)
+    setTimeSaved(false)
+    try {
+      await updateEmailPreferences(emailConsent, undefined, {
+        timezone_name: timezone,
+        meal_plan_hour: Number(mealHour),
+        meal_plan_minute: Number(mealMinute),
+      })
+      setTimeSaved(true)
+    } finally {
+      setEmailSaving(false)
+    }
+  }
+
+  const fmtTime = (h, m) => `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
 
   const toggleEmailConsent = async () => {
     setEmailSaving(true)
@@ -393,8 +423,55 @@ export default function Settings() {
               <p className="text-xs text-brand-muted mt-2">
                 {emailDays.length === 0
                   ? 'No days selected — you won’t receive meal plan emails.'
-                  : `Delivered around 10:30 AM on the highlighted day${emailDays.length > 1 ? 's' : ''}.`}
+                  : `Delivered around ${fmtTime(mealHour, mealMinute)} (${timezone}) on the highlighted day${emailDays.length > 1 ? 's' : ''}.`}
               </p>
+            </div>
+
+            {/* Delivery time + timezone */}
+            <div className={emailConsent ? 'mt-5' : 'mt-5 opacity-50 pointer-events-none'}>
+              <p className="text-xs uppercase tracking-widest text-brand-muted mb-2">
+                Delivery time
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={mealHour}
+                  onChange={(e) => { setMealHour(Number(e.target.value)); setTimeSaved(false) }}
+                  disabled={!emailConsent}
+                  className="forge-input w-auto"
+                  aria-label="Delivery hour"
+                >
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>{fmtTime(h, 0).replace(':00', '')}</option>
+                  ))}
+                </select>
+                <select
+                  value={mealMinute}
+                  onChange={(e) => { setMealMinute(Number(e.target.value)); setTimeSaved(false) }}
+                  disabled={!emailConsent}
+                  className="forge-input w-auto"
+                  aria-label="Delivery minute"
+                >
+                  {[0, 15, 30, 45].map((m) => (
+                    <option key={m} value={m}>:{String(m).padStart(2, '0')}</option>
+                  ))}
+                </select>
+                <select
+                  value={timezone}
+                  onChange={(e) => { setTimezone(e.target.value); setTimeSaved(false) }}
+                  disabled={!emailConsent}
+                  className="forge-input w-auto"
+                  aria-label="Timezone"
+                >
+                  {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+                </select>
+                <button
+                  onClick={saveDeliveryTime}
+                  disabled={emailSaving || !emailConsent}
+                  className="btn-steel px-4 py-2 text-sm"
+                >
+                  {timeSaved ? '✅ Saved' : 'Save time'}
+                </button>
+              </div>
             </div>
           </>
         )}

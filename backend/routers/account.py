@@ -11,11 +11,12 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from itsdangerous import BadSignature, SignatureExpired
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 from auth.tokens import verify_unsubscribe_token
@@ -218,6 +219,10 @@ class EmailPreferencesUpdate(BaseModel):
     # Weekdays to receive meal-plan emails (ISO Mon=1..Sun=7). Optional — when
     # omitted the existing selection is left unchanged. Empty list = no days.
     email_days: list[int] | None = None
+    # Per-user local delivery time + zone (all optional — omit to leave unchanged).
+    timezone_name: str | None = Field(default=None, max_length=64)
+    meal_plan_hour: int | None = Field(default=None, ge=0, le=23)
+    meal_plan_minute: int | None = Field(default=None, ge=0, le=59)
 
 
 def _clean_email_days(days: list[int]) -> list[int]:
@@ -233,15 +238,18 @@ def _clean_email_days(days: list[int]) -> list[int]:
 
 @router.get("/email-preferences")
 def get_email_preferences(conn=Depends(get_db), user=Depends(get_current_user)):
-    """Return current email consent + chosen weekdays for the logged-in user."""
+    """Return current email consent, weekdays, and delivery time/zone."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT email_consent, email_consent_date, email_days FROM users WHERE id = %s",
+            "SELECT email_consent, email_consent_date, email_days, "
+            "       timezone_name, meal_plan_hour, meal_plan_minute "
+            "FROM users WHERE id = %s",
             (user["id"],),
         )
         row = cur.fetchone()
     if not row:
-        return {"email_consent": False, "email_consent_date": None, "email_days": []}
+        return {"email_consent": False, "email_consent_date": None, "email_days": [],
+                "timezone_name": "America/Chicago", "meal_plan_hour": 10, "meal_plan_minute": 30}
     return dict(row)
 
 
@@ -251,29 +259,47 @@ def update_email_preferences(
     conn=Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Update email consent and (optionally) the chosen weekdays."""
+    """Update email consent, weekdays, and (optionally) delivery time/zone."""
     consent_date = datetime.now(timezone.utc) if body.email_consent else None
     days = _clean_email_days(body.email_days) if body.email_days is not None else None
-    # RETURNING email_days so the response always carries the real stored value
-    # (a list), never null, even when email_days was omitted from the request.
+
+    sets = ["email_consent = %s", "email_consent_date = %s"]
+    params: list = [body.email_consent, consent_date]
+    if days is not None:
+        sets.append("email_days = %s")
+        params.append(days)
+    if body.timezone_name is not None:
+        try:
+            ZoneInfo(body.timezone_name)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown timezone: {body.timezone_name}",
+            )
+        sets.append("timezone_name = %s")
+        params.append(body.timezone_name)
+    if body.meal_plan_hour is not None:
+        sets.append("meal_plan_hour = %s")
+        params.append(body.meal_plan_hour)
+    if body.meal_plan_minute is not None:
+        sets.append("meal_plan_minute = %s")
+        params.append(body.meal_plan_minute)
+    params.append(user["id"])
+
     with conn.cursor() as cur:
-        if days is not None:
-            cur.execute(
-                "UPDATE users SET email_consent = %s, email_consent_date = %s, "
-                "email_days = %s WHERE id = %s RETURNING email_days",
-                (body.email_consent, consent_date, days, user["id"]),
-            )
-        else:
-            cur.execute(
-                "UPDATE users SET email_consent = %s, email_consent_date = %s "
-                "WHERE id = %s RETURNING email_days",
-                (body.email_consent, consent_date, user["id"]),
-            )
+        cur.execute(
+            f"UPDATE users SET {', '.join(sets)} WHERE id = %s "
+            "RETURNING email_days, timezone_name, meal_plan_hour, meal_plan_minute",
+            params,
+        )
         row = cur.fetchone()
     return {
         "ok": True,
         "email_consent": body.email_consent,
         "email_days": row["email_days"] if row else (days or []),
+        "timezone_name": row["timezone_name"] if row else None,
+        "meal_plan_hour": row["meal_plan_hour"] if row else None,
+        "meal_plan_minute": row["meal_plan_minute"] if row else None,
     }
 
 

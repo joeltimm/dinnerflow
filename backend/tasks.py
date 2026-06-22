@@ -53,36 +53,70 @@ def send_meal_plan_for_user(user_id: int, email: str, name: str):
 # ── Scheduled tasks ──────────────────────────────────────────────────────────
 
 @app.task(name="tasks.send_all_meal_plans", ignore_result=True)
-def send_all_meal_plans():
+def send_all_meal_plans(now_iso: str | None = None):
     """
-    Scheduled job (daily 10:30 AM Chicago): fan out meal plan emails.
+    Scheduled tick (every minute): fan out meal-plan emails at each user's own
+    local delivery time.
 
-    Beat fires every day; each user receives mail only on the weekdays they
-    chose (users.email_days, ISO Mon=1..Sun=7). We compute "today" in the
-    app's timezone so the weekday matches the 10:30 AM local send time.
+    For each consented user we evaluate their local clock (users.timezone_name)
+    and enqueue a send when ALL hold:
+      - local hour:minute == users.meal_plan_hour:meal_plan_minute
+      - local ISO weekday is in users.email_days (Mon=1..Sun=7)
+      - they haven't already been sent today in their own timezone
+        (guarded by last_meal_plan_sent_at)
 
-    Enqueues one send_meal_plan_for_user task per matching user so Celery
-    workers process them in parallel rather than sequentially.
+    The send is stamped immediately so a second tick in the same minute can't
+    double-send, and so retries of the per-user task don't re-stamp.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
 
     _ensure_pool()
-    today_iso = datetime.now(ZoneInfo("America/Chicago")).isoweekday()
-    logger.info("Scheduled meal plan run (weekday=%d) — fanning out...", today_iso)
+    # now_iso lets tests pin the clock; production passes nothing.
+    now_utc = (
+        datetime.fromisoformat(now_iso).astimezone(timezone.utc)
+        if now_iso else datetime.now(timezone.utc)
+    )
 
     with get_connection() as conn:
         conn.cursor_factory = psycopg2.extras.RealDictCursor
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, email, full_name FROM users "
-                "WHERE email_consent = true AND %s = ANY(email_days)",
-                (today_iso,),
+                "SELECT id, email, full_name, timezone_name, meal_plan_hour, "
+                "       meal_plan_minute, email_days, last_meal_plan_sent_at "
+                "FROM users WHERE email_consent = true"
             )
             users = [dict(r) for r in cur.fetchall()]
 
-    logger.info("Enqueuing meal plan tasks for %d users", len(users))
-    for u in users:
+            due = []
+            for u in users:
+                try:
+                    tz = ZoneInfo(u["timezone_name"] or "America/Chicago")
+                except Exception:
+                    logger.warning("User %d has invalid timezone %r — skipping",
+                                   u["id"], u["timezone_name"])
+                    continue
+                local = now_utc.astimezone(tz)
+                if local.hour != u["meal_plan_hour"] or local.minute != u["meal_plan_minute"]:
+                    continue
+                if local.isoweekday() not in (u["email_days"] or []):
+                    continue
+                # Already sent today (in the user's local day)?
+                last = u["last_meal_plan_sent_at"]
+                if last is not None and last.astimezone(tz).date() == local.date():
+                    continue
+                due.append(u)
+
+            # Stamp now (atomically) so concurrent/retried ticks don't double-send.
+            for u in due:
+                cur.execute(
+                    "UPDATE users SET last_meal_plan_sent_at = %s WHERE id = %s",
+                    (now_utc, u["id"]),
+                )
+
+    if due:
+        logger.info("Enqueuing meal plan tasks for %d user(s)", len(due))
+    for u in due:
         send_meal_plan_for_user.delay(u["id"], u["email"], u.get("full_name", "Chef"))
 
 

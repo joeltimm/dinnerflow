@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 9tD2AmI4y7iKZZSuusJ9KcJweTKPG6BlKeMhrp4NECivcXCI75XYhUXkQpYF9wk
+\restrict imAgnvBkKJ66XxkFob0fnZmztDUyfj4hN7Jky6SGDfxWxdoZH6plEtUahReGWcJ
 
 -- Dumped from database version 15.15 (Debian 15.15-1.pgdg12+1)
 -- Dumped by pg_dump version 15.15 (Debian 15.15-1.pgdg12+1)
@@ -266,7 +266,13 @@ CREATE TABLE public.users (
     email_consent boolean DEFAULT false NOT NULL,
     email_consent_date timestamp with time zone,
     email_days integer[] DEFAULT '{2,6}'::integer[] NOT NULL,
-    CONSTRAINT chk_email_days_range CHECK ((email_days <@ ARRAY[1, 2, 3, 4, 5, 6, 7]))
+    timezone_name text DEFAULT 'America/Chicago'::text NOT NULL,
+    meal_plan_hour integer DEFAULT 10 NOT NULL,
+    meal_plan_minute integer DEFAULT 30 NOT NULL,
+    last_meal_plan_sent_at timestamp with time zone,
+    CONSTRAINT chk_email_days_range CHECK ((email_days <@ ARRAY[1, 2, 3, 4, 5, 6, 7])),
+    CONSTRAINT chk_meal_plan_hour CHECK (((meal_plan_hour >= 0) AND (meal_plan_hour <= 23))),
+    CONSTRAINT chk_meal_plan_minute CHECK (((meal_plan_minute >= 0) AND (meal_plan_minute <= 59)))
 );
 
 
@@ -572,5 +578,5 @@ ALTER TABLE ONLY public.user_sessions
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 9tD2AmI4y7iKZZSuusJ9KcJweTKPG6BlKeMhrp4NECivcXCI75XYhUXkQpYF9wk
+\unrestrict imAgnvBkKJ66XxkFob0fnZmztDUyfj4hN7Jky6SGDfxWxdoZH6plEtUahReGWcJ
 

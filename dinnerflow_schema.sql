@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict MDYcCIzTGsilutvJcCeoHWjIcSOSbifMPamTpI2UJBVA6yzl1hR7BLnrS3cJKpc
+\restrict imAgnvBkKJ66XxkFob0fnZmztDUyfj4hN7Jky6SGDfxWxdoZH6plEtUahReGWcJ
 
 -- Dumped from database version 15.15 (Debian 15.15-1.pgdg12+1)
--- Dumped by pg_dump version 16.11 (Ubuntu 16.11-0ubuntu0.24.04.1)
+-- Dumped by pg_dump version 15.15 (Debian 15.15-1.pgdg12+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -35,6 +35,15 @@ COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access met
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- Name: alembic_version; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.alembic_version (
+    version_num character varying(32) NOT NULL
+);
+
 
 --
 -- Name: cooking_log; Type: TABLE; Schema: public; Owner: -
@@ -118,13 +127,13 @@ CREATE TABLE public.recipes (
     instructions jsonb,
     full_text_content text,
     local_image_path text,
-    embedding public.vector(768),
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     rating integer,
     last_cooked timestamp without time zone,
     times_cooked integer DEFAULT 0,
     is_favorite boolean DEFAULT false,
-    user_id integer
+    user_id integer,
+    embedding public.vector(768)
 );
 
 
@@ -243,10 +252,6 @@ CREATE TABLE public.user_sessions (
 
 
 --
--- Name: user_sessions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
---
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -259,7 +264,15 @@ CREATE TABLE public.users (
     is_admin boolean DEFAULT false,
     dietary_preferences text,
     email_consent boolean DEFAULT false NOT NULL,
-    email_consent_date timestamp with time zone
+    email_consent_date timestamp with time zone,
+    email_days integer[] DEFAULT '{2,6}'::integer[] NOT NULL,
+    timezone_name text DEFAULT 'America/Chicago'::text NOT NULL,
+    meal_plan_hour integer DEFAULT 10 NOT NULL,
+    meal_plan_minute integer DEFAULT 30 NOT NULL,
+    last_meal_plan_sent_at timestamp with time zone,
+    CONSTRAINT chk_email_days_range CHECK ((email_days <@ ARRAY[1, 2, 3, 4, 5, 6, 7])),
+    CONSTRAINT chk_meal_plan_hour CHECK (((meal_plan_hour >= 0) AND (meal_plan_hour <= 23))),
+    CONSTRAINT chk_meal_plan_minute CHECK (((meal_plan_minute >= 0) AND (meal_plan_minute <= 59)))
 );
 
 
@@ -326,6 +339,14 @@ ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_
 
 
 --
+-- Name: alembic_version alembic_version_pkc; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.alembic_version
+    ADD CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num);
+
+
+--
 -- Name: cooking_log cooking_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -382,7 +403,7 @@ ALTER TABLE ONLY public.user_integrations
 
 
 --
--- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: user_sessions user_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_sessions
@@ -406,6 +427,69 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: idx_cooking_log_recipe_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cooking_log_recipe_id ON public.cooking_log USING btree (recipe_id);
+
+
+--
+-- Name: idx_recipes_embedding; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_recipes_embedding ON public.recipes USING hnsw (embedding public.vector_cosine_ops);
+
+
+--
+-- Name: idx_recipes_user_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_recipes_user_created ON public.recipes USING btree (user_id, created_at DESC);
+
+
+--
+-- Name: idx_recipes_user_favorites; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_recipes_user_favorites ON public.recipes USING btree (user_id, is_favorite) WHERE (is_favorite = true);
+
+
+--
+-- Name: idx_recipes_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_recipes_user_id ON public.recipes USING btree (user_id);
+
+
+--
+-- Name: idx_search_terms_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_search_terms_created ON public.search_terms USING btree (created_at);
+
+
+--
+-- Name: idx_sessions_expires; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sessions_expires ON public.user_sessions USING btree (expires_at);
+
+
+--
+-- Name: idx_sessions_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sessions_user_id ON public.user_sessions USING btree (user_id);
+
+
+--
+-- Name: idx_shopping_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_shopping_user_id ON public.shopping_list_items USING btree (user_id, is_checked, created_at DESC);
+
+
+--
 -- Name: idx_sync_logs_time; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -413,19 +497,17 @@ CREATE INDEX idx_sync_logs_time ON public.recipe_sync_logs USING btree (synced_a
 
 
 --
--- Indexes for scalability (added in migration 001)
+-- Name: idx_sync_logs_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX IF NOT EXISTS idx_recipes_user_id ON public.recipes (user_id);
-CREATE INDEX IF NOT EXISTS idx_recipes_user_favorites ON public.recipes (user_id, is_favorite) WHERE is_favorite = true;
-CREATE INDEX IF NOT EXISTS idx_recipes_user_created ON public.recipes (user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON public.user_sessions (user_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_expires ON public.user_sessions (expires_at);
-CREATE INDEX IF NOT EXISTS idx_shopping_user_id ON public.shopping_list_items (user_id, is_checked, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_cooking_log_recipe_id ON public.cooking_log (recipe_id);
-CREATE INDEX IF NOT EXISTS idx_sync_logs_user_id ON public.recipe_sync_logs (user_id);
-CREATE INDEX IF NOT EXISTS idx_users_email_consent ON public.users (id) WHERE email_consent = true;
-CREATE INDEX IF NOT EXISTS idx_search_terms_created ON public.search_terms (created_at);
+CREATE INDEX idx_sync_logs_user_id ON public.recipe_sync_logs USING btree (user_id);
+
+
+--
+-- Name: idx_users_email_consent; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_users_email_consent ON public.users USING btree (id) WHERE (email_consent = true);
 
 
 --
@@ -496,9 +578,5 @@ ALTER TABLE ONLY public.user_sessions
 -- PostgreSQL database dump complete
 --
 
-\unrestrict MDYcCIzTGsilutvJcCeoHWjIcSOSbifMPamTpI2UJBVA6yzl1hR7BLnrS3cJKpc
-
--- Semantic-search index (migration 005). Kept here so fresh installs match.
-CREATE INDEX IF NOT EXISTS idx_recipes_embedding
-  ON public.recipes USING hnsw (embedding vector_cosine_ops);
+\unrestrict imAgnvBkKJ66XxkFob0fnZmztDUyfj4hN7Jky6SGDfxWxdoZH6plEtUahReGWcJ
 

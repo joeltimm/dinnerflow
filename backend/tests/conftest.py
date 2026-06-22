@@ -160,6 +160,18 @@ def _clear_session_cache():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _pool_open():
+    """
+    The TestClient app lifespan closes the shared module pool on shutdown, which
+    would break pool-based code (e.g. Celery tasks) in a later test. Re-open it
+    before each test if it was closed.
+    """
+    if database._pool is None or getattr(database._pool, "closed", False):
+        database.init_pool()
+    yield
+
+
 # ── External-service mocks (no network in tests) ──────────────────────────────
 
 @pytest.fixture(autouse=True)
