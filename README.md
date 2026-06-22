@@ -76,11 +76,12 @@ ironskillet/
 │   ├── alembic/                 # Alembic harness for revision tracking (raw SQL, no ORM)
 │   │   ├── env.py
 │   │   └── versions/            # Migration scripts (001_baseline, 002_add_indexes, ...)
-│   └── alembic.ini
+│   ├── alembic.ini
+│   └── scripts/
+│       └── backfill_embeddings.py   # One-off: embed existing recipes (semantic search)
 ├── scripts/
 │   ├── backup-db.sh             # Automated pg_dump with rotation (7 daily + 4 weekly)
-│   ├── restore-db.sh            # Interactive database restore from backup
-│   └── backfill_embeddings.py   # One-off: embed existing recipes (semantic search)
+│   └── restore-db.sh            # Interactive database restore from backup
 ├── web/
 │   ├── src/
 │   │   ├── api/client.js        # Axios API client (all endpoints)
