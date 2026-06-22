@@ -1,0 +1,79 @@
+name: PR Review Checklist
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  checklist-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    # See claude-auto-review.yml: route API writes to the Forgejo container
+    # on the docker bridge, bypassing Cloudflare's managed challenge.
+    env:
+      GITHUB_API_URL: http://172.21.0.4:3000/api/v1
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      # Forgejo-compatible fork of anthropics/claude-code-action (instance mirror).
+      - uses: https://git.joeltimm.dev/joelrocks/claude-code-action@main
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          platform: "forgejo"
+          github_token: ${{ secrets.CLAUDE_BOT_TOKEN }}
+          bot_id: "2"
+          bot_name: "claude-bot"
+          bot_email: "claude-bot@git.joeltimm.dev"
+          track_progress: "true"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this PR against the Iron Skillet checklist. This is a
+            self-hosted FastAPI + Celery + React meal-planner; architecture
+            notes are in `AGENTS.md`, schema in `SCHEMA.md`.
+
+            ## Code quality
+            - [ ] No `print()` in backend code — use the module `logging` logger
+            - [ ] No commented-out code (use git history)
+            - [ ] Meaningful names; DRY where it pays off
+            - [ ] Backend changes byte-compile (CI `backend` job) and the
+                  frontend builds (CI `frontend` job)
+
+            ## Backend correctness
+            - [ ] Every psycopg2 query is parameterized (no f-string/format SQL)
+            - [ ] Request bodies validated with Pydantic models
+            - [ ] DB queries scoped to the current user where applicable
+            - [ ] Slow/blocking work (scrape, LLM, Todoist) runs in a Celery
+                  task, not inline in a request handler
+
+            ## Migrations
+            - [ ] Schema changes added as a new `backend/migrations/NNN_*.sql`
+                  (never edit an applied migration)
+            - [ ] Idempotent (`ADD COLUMN IF NOT EXISTS`, guarded constraints)
+            - [ ] `SCHEMA.md` updated to match
+
+            ## Security
+            - [ ] No hardcoded credentials / API keys / DB passwords
+            - [ ] Email action links stay HMAC-signed; Todoist tokens stay
+                  Fernet-encrypted
+            - [ ] No secrets (tokens, passwords) in log lines
+
+            ## Documentation
+            - [ ] `README.md` updated if local-dev / deploy / a new env var changed
+            - [ ] `.env.example` updated for any new env var
+            - [ ] `AGENTS.md` updated if services / scheduling / env changed
+            - [ ] Inline comments explain *why*, not *what*
+
+            ## Dependencies
+            - [ ] New Python deps pinned with exact `==` in `backend/requirements.txt`
+            - [ ] New npm deps: `web/package-lock.json` regenerated (CI `npm ci` passes)
+
+            Mark each item satisfied / not. For gaps, post inline comments at the
+            relevant lines, or call them out in a final summary comment and flag
+            anything that should block the merge.

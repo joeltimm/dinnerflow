@@ -1,0 +1,54 @@
+name: Claude Auto Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    # Substantive code changes only — skip docs-only / CI-only PRs.
+    paths:
+      - "backend/**/*.py"
+      - "web/src/**/*.jsx"
+      - "web/src/**/*.js"
+      - "web/src/**/*.css"
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    # Route the action's API writes straight to the Forgejo container on the
+    # docker bridge, bypassing the Cloudflare-fronted public hostname (its
+    # managed challenge silently 403's authenticated /api/v1 writes). This IP
+    # is the shared Forgejo instance, so it matches what tm-crm uses.
+    env:
+      GITHUB_API_URL: http://172.21.0.4:3000/api/v1
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      # Forgejo-compatible fork of anthropics/claude-code-action (instance mirror).
+      - uses: https://git.joeltimm.dev/joelrocks/claude-code-action@main
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          platform: "forgejo"
+          github_token: ${{ secrets.CLAUDE_BOT_TOKEN }}
+          bot_id: "2"
+          bot_name: "claude-bot"
+          bot_email: "claude-bot@git.joeltimm.dev"
+          # Tag mode — posts a tracking comment and lets Claude publish its
+          # review by editing it (agent mode lacks comment-create permission).
+          # Quoted so act_runner doesn't serialize it as "True".
+          track_progress: "true"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Please review this pull request with a focus on:
+            - Code quality and best practices
+            - Potential bugs or issues
+            - Security implications
+            - Performance considerations
+
+            Provide detailed feedback using inline comments for specific issues.
