@@ -51,29 +51,31 @@ async def lifespan(app: FastAPI):
     init_pool()
     logger.info("App starting — DB pool ready.")
 
-    # Warn early if Gmail token is missing — email will fail at send time but app still runs
-    from pathlib import Path as _Path
-    sender = settings.sender_email
-    if sender:
-        suffix = sender.split("@")[0]
-        token_path = _Path(settings.google_auth_path) / f"token_{suffix}.json"
-        if not token_path.exists():
-            logger.warning(
-                "Gmail token not found at %s — email sending will fail. "
-                "Run backend/scripts/generate_gmail_token.py to fix.",
-                token_path,
-            )
-    else:
-        logger.warning("SENDER_EMAIL is not set — email sending is disabled.")
-
     yield  # ── application is running ──
 
     close_pool()
     logger.info("App shutdown complete.")
 
 
+def _init_sentry(settings) -> None:
+    """Initialise Sentry only when a DSN is configured (no-op otherwise)."""
+    if not settings.sentry_dsn:
+        return
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.environment,
+            traces_sample_rate=0.0,  # errors only by default
+        )
+        logger.info("Sentry error reporting enabled.")
+    except Exception as exc:  # never let telemetry break startup
+        logger.warning("Sentry init failed: %s", exc)
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
+    _init_sentry(settings)
 
     app = FastAPI(
         title="Iron Skillet API",
@@ -155,7 +157,10 @@ def create_app() -> FastAPI:
         except Exception as exc:
             checks["disk"] = {"error": str(exc)}
 
-        return {"status": status_val, "checks": checks}
+        # Per-worker activity counters (LLM/scrape/email outcomes) — handy for
+        # spotting silent failures. See services/metrics.py.
+        from services import metrics
+        return {"status": status_val, "checks": checks, "metrics": metrics.snapshot()}
 
     return app
 

@@ -60,8 +60,7 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:?Set LLM_BASE_URL in .env}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
-      - SENDER_EMAIL=${SENDER_EMAIL}
-      - GOOGLE_AUTH_PATH=/app/google_auth
+      - EMBED_MODEL=${EMBED_MODEL:-nomic-embed-text-v1.5-q5_k_m}
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost}
       - UPLOADS_PATH=/app/uploads
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
@@ -75,10 +74,6 @@ services:
     volumes:
       # Recipe image uploads — persisted on host (set UPLOADS_HOST_PATH in .env)
       - ${UPLOADS_HOST_PATH:-./uploads}:/app/uploads
-      # Gmail OAuth token — reuse the existing token from calendar_bot.
-      # token_joeltimm.json already includes gmail.send scope.
-      # Mounted read-only so the backend can load and auto-refresh it.
-      - ${GOOGLE_AUTH_HOST_PATH:?Set GOOGLE_AUTH_HOST_PATH in .env}:/app/google_auth:ro
     # Port 8000 on the host is taken by gohttpserver.
     # nginx (web container) reaches the backend over the internal app-net network,
     # so no host-port binding is needed for normal operation.
@@ -122,8 +117,7 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:?Set LLM_BASE_URL in .env}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
-      - SENDER_EMAIL=${SENDER_EMAIL}
-      - GOOGLE_AUTH_PATH=/app/google_auth
+      - EMBED_MODEL=${EMBED_MODEL:-nomic-embed-text-v1.5-q5_k_m}
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost}
       - UPLOADS_PATH=/app/uploads
       - REDIS_URL=redis://redis:6379/0
@@ -135,7 +129,6 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${UPLOADS_HOST_PATH:-./uploads}:/app/uploads
-      - ${GOOGLE_AUTH_HOST_PATH:?Set GOOGLE_AUTH_HOST_PATH in .env}:/app/google_auth:ro
     networks:
       - app-net
     depends_on:

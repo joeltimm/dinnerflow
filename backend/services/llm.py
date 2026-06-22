@@ -53,10 +53,13 @@ def _chat(
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
 
+    from services import metrics
+
     last_exc: Exception | None = None
     for attempt in range(1, settings.llm_max_attempts + 1):
         try:
             resp = _client(timeout).chat.completions.create(**kwargs)
+            metrics.inc("llm_calls_ok")
             return resp.choices[0].message.content.strip()
         except (APIConnectionError, APITimeoutError) as exc:
             last_exc = exc
@@ -66,6 +69,7 @@ def _chat(
             )
             if attempt < settings.llm_max_attempts:
                 time.sleep(settings.llm_retry_backoff_seconds * attempt)
+    metrics.inc("llm_calls_failed")
     raise LLMUnavailable(str(last_exc)) from last_exc
 
 

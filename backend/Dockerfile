@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create uploads directory (also mounted as a volume in compose)
-RUN mkdir -p /app/uploads /app/google_auth
+RUN mkdir -p /app/uploads
 
 EXPOSE 8000
 

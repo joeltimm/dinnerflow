@@ -40,15 +40,12 @@ Pillow==11.0.0
 celery[redis]==5.4.0
 redis==5.2.1
 
-# Gmail OAuth (same deps as calendar_bot)
-google-auth==2.37.0
-google-auth-oauthlib==1.2.1
-google-auth-httplib2==0.2.0
-google-api-python-client==2.156.0
-
 # Web search for recipe ideas
 tavily-python==0.5.0       # Primary: Tavily (requires API key, free tier limited)
 duckduckgo-search==6.3.7   # Fallback: DDG (no API key, no credit limits)
+
+# Error reporting (optional — only active when SENTRY_DSN is set)
+sentry-sdk[fastapi]==2.19.2
 
 # Testing & linting (also run in CI — see .forgejo/workflows/ci.yml)
 pytest==8.3.4

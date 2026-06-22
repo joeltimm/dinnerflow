@@ -31,7 +31,7 @@ def _safe_url(url: str) -> str:
 def _send(to: str, subject: str, html_body: str) -> None:
     """Low-level send via the host Postfix SMTP relay."""
     settings = get_settings()
-    from_addr = settings.smtp_from or settings.sender_email
+    from_addr = settings.smtp_from
 
     msg = MIMEMultipart("alternative")
     msg["To"] = to
@@ -58,6 +58,8 @@ def _send(to: str, subject: str, html_body: str) -> None:
             smtp.ehlo()
         smtp.send_message(msg, from_addr=from_addr, to_addrs=[to])
 
+    from services import metrics
+    metrics.inc("emails_sent")
     logger.info("Email sent to %s | subject: %s", to, subject)
 
 

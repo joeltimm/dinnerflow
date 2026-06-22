@@ -170,12 +170,12 @@ async def list_recisions(...):
     ...
 ```
 
-### TypeScript/JavaScript (Frontend)
+### JavaScript / JSX (Frontend)
 
 **Component Structure:**
-- Functional components with React hooks
-- Props defined with TypeScript interfaces
+- Functional components with React hooks (plain JS/JSX — no TypeScript)
 - Separate concerns: components, pages, context, api
+- Unit tests with Vitest + Testing Library (`npm test`); test files under `__tests__/`
 
 **API Client:**
 - Use Axios instance from `src/api/client.js`
@@ -263,7 +263,7 @@ When adding tests: mock external calls via the `mocks` fixture; seed rows with
 ## Environment Setup
 
 - `.env` file required at project root (see `.env.example`)
-- Email sends via an SMTP relay reached over the Docker host-gateway: `SMTP_HOST` (default `host.docker.internal`, requires `extra_hosts: ["host.docker.internal:host-gateway"]`), `SMTP_PORT`, `SMTP_FROM`. The legacy Gmail-API path (`/app/google_auth` mount via `GOOGLE_AUTH_HOST_PATH`, `SENDER_EMAIL`) is left in place but unused.
+- Email sends via an SMTP relay reached over the Docker host-gateway: `SMTP_HOST` (default `host.docker.internal`, requires `extra_hosts: ["host.docker.internal:host-gateway"]`), `SMTP_PORT`, `SMTP_FROM`. (The old Gmail-API path — `google-auth*` deps, `GOOGLE_AUTH_HOST_PATH`, `SENDER_EMAIL`, `generate_gmail_token.py` — has been removed.)
 - Recipe uploads mounted via `UPLOADS_HOST_PATH` (defaults to `./uploads`)
 - Key env vars: `LLM_BASE_URL`, `LLM_MODEL`, `TAVILY_API_KEY`, `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM`, `APP_BASE_URL` (public URL — must not be `localhost` or email links break), `CORS_ORIGINS`, `FERNET_KEY`, `SECRET_KEY`
 - The Celery worker and beat need `PYTHONPATH=/app` (the `celery` CLI doesn't put cwd on `sys.path`, so deferred imports like `from services.email …` fail without it)
