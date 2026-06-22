@@ -96,6 +96,9 @@ jobs:
         # Fails if package.json drift means package-lock.json wasn't regenerated.
         run: npm ci
 
+      - name: Unit tests (vitest)
+        run: npm test
+
       - name: Vite build
         # Same `vite build` the web Docker image runs in production — fails CI on
         # any build/import/JSX error before it reaches a deploy.

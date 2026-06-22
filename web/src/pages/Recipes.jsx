@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   listRecipes, getRecipe, createRecipe, updateRecipe, deleteRecipe,
   updateRating, toggleFavorite, uploadImage, getRecipeHistory,
-  importRecipeFromUrl, searchRecipes,
+  importRecipeFromUrl, searchRecipes, addRecipeToShoppingList,
 } from '../api/client'
 import { useOnboarding } from '../context/OnboardingContext'
 import RecipeCard from '../components/RecipeCard'
@@ -176,6 +176,7 @@ function RecipeDetail({ recipe: initial, onClose, onUpdate }) {
   const [editing, setEditing]           = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [history, setHistory]           = useState(null)
+  const [shopMsg, setShopMsg]           = useState('')
 
   useEffect(() => {
     getRecipeHistory(initial.id).then((r) => setHistory(r.data))
@@ -201,6 +202,18 @@ function RecipeDetail({ recipe: initial, onClose, onUpdate }) {
   const handleDelete = async () => {
     await deleteRecipe(recipe.id)
     onClose(recipe.id)
+  }
+
+  const handleAddToShopping = async () => {
+    setShopMsg('')
+    try {
+      const res = await addRecipeToShoppingList(recipe.id)
+      setShopMsg(res.data.count > 0
+        ? `Added ${res.data.count} ingredient${res.data.count === 1 ? '' : 's'} to your shopping list.`
+        : 'All ingredients are already on your list.')
+    } catch {
+      setShopMsg('Could not add to shopping list.')
+    }
   }
 
   const handleEditSave = async (payload, imageFile) => {
@@ -307,6 +320,12 @@ function RecipeDetail({ recipe: initial, onClose, onUpdate }) {
               className="btn-steel px-4 py-2 text-sm">
               ✏️ Edit
             </button>
+            {ingredients.length > 0 && (
+              <button onClick={handleAddToShopping}
+                className="btn-steel px-4 py-2 text-sm">
+                🛒 Add to list
+              </button>
+            )}
             {!confirmDelete ? (
               <button onClick={() => setConfirmDelete(true)}
                 className="px-4 py-2 text-sm text-red-500 border border-red-800/40 rounded-lg hover:bg-red-900/20 transition-colors">
@@ -326,6 +345,10 @@ function RecipeDetail({ recipe: initial, onClose, onUpdate }) {
               </div>
             )}
           </div>
+
+          {shopMsg && (
+            <p className="text-sm text-brand-blue-light mt-3">{shopMsg}</p>
+          )}
 
           {/* Cook history */}
           {history && history.length > 0 && (

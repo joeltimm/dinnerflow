@@ -113,6 +113,10 @@ export const getShoppingList = () => api.get('/shopping')
 export const addShoppingItem = (item_text, recipe_source = null) =>
   api.post('/shopping', { item_text, recipe_source })
 
+// Add all of a recipe's ingredients to the shopping list (dedup'd server-side).
+export const addRecipeToShoppingList = (recipeId) =>
+  api.post(`/shopping/from-recipe/${recipeId}`)
+
 export const toggleShoppingItem = (id) => api.put(`/shopping/${id}`)
 
 export const deleteShoppingItem = (id) => api.delete(`/shopping/${id}`)
@@ -123,9 +127,12 @@ export const clearCheckedItems = () => api.delete('/shopping/checked')
 export const getEmailPreferences = () => api.get('/account/email-preferences')
 
 // email_days (ISO Mon=1..Sun=7) is optional; omit it to leave the selection unchanged.
-export const updateEmailPreferences = (email_consent, email_days) =>
-  api.put('/account/email-preferences',
-    email_days === undefined ? { email_consent } : { email_consent, email_days })
+// extra may carry { timezone_name, meal_plan_hour, meal_plan_minute } (all optional).
+export const updateEmailPreferences = (email_consent, email_days, extra = {}) => {
+  const payload = { email_consent, ...extra }
+  if (email_days !== undefined) payload.email_days = email_days
+  return api.put('/account/email-preferences', payload)
+}
 
 export const exportAccountData = () =>
   api.get('/account/export-data', { responseType: 'blob' })

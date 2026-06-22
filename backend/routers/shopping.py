@@ -53,6 +53,50 @@ def add_item(body: ShoppingItemCreate, conn=Depends(get_db), user=Depends(get_cu
         return dict(cur.fetchone())
 
 
+@router.post("/from-recipe/{recipe_id}", status_code=status.HTTP_201_CREATED)
+def add_from_recipe(recipe_id: int, conn=Depends(get_db), user=Depends(get_current_user)):
+    """
+    Add all of a recipe's ingredients to the shopping list in one click.
+
+    Tags each item with recipe_source = the recipe title, and skips ingredients
+    already present for that same recipe (case-insensitive) so re-adding is safe.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT title, ingredients FROM recipes WHERE id = %s AND user_id = %s",
+            (recipe_id, user["id"]),
+        )
+        recipe = cur.fetchone()
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+
+        source = recipe["title"]
+        ingredients = recipe["ingredients"] or []  # jsonb → list[str]
+
+        cur.execute(
+            "SELECT lower(item_text) AS t FROM shopping_list_items "
+            "WHERE user_id = %s AND recipe_source = %s",
+            (user["id"], source),
+        )
+        existing = {r["t"] for r in cur.fetchall()}
+
+        added = []
+        for raw in ingredients:
+            item = (raw or "").strip()
+            if not item or item.lower() in existing:
+                continue
+            cur.execute(
+                "INSERT INTO shopping_list_items (user_id, item_text, recipe_source) "
+                "VALUES (%s, %s, %s) "
+                "RETURNING id, item_text, recipe_source, is_checked, created_at",
+                (user["id"], item, source),
+            )
+            added.append(dict(cur.fetchone()))
+            existing.add(item.lower())
+
+    return {"added": added, "count": len(added), "recipe_source": source}
+
+
 @router.delete("/checked", status_code=status.HTTP_204_NO_CONTENT)
 def clear_checked(conn=Depends(get_db), user=Depends(get_current_user)):
     with conn.cursor() as cur:

@@ -39,11 +39,12 @@ app.conf.update(
 
 # Beat schedule — replaces APScheduler jobs
 app.conf.beat_schedule = {
-    # Fire daily; send_all_meal_plans filters each user by their chosen
-    # email_days (ISO Mon=1..Sun=7), so per-user day selection is honoured.
-    "meal-plans-daily": {
+    # Fire every minute; send_all_meal_plans checks each consented user's local
+    # clock (users.timezone_name + meal_plan_hour/minute) and chosen email_days,
+    # and uses last_meal_plan_sent_at to send at most once per local day.
+    "meal-plans-tick": {
         "task": "tasks.send_all_meal_plans",
-        "schedule": crontab(hour=10, minute=30),
+        "schedule": crontab(minute="*"),
     },
     "session-cleanup-daily": {
         "task": "tasks.cleanup_sessions",
