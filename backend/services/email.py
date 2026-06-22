@@ -35,6 +35,11 @@ def _send(to: str, subject: str, html_body: str) -> None:
         # the host-gateway IP, which won't match the relay's cert CN, so verify is
         # off — this hop is host-local and trusted by IP (mynetworks). The real
         # cert-verified TLS + auth happens upstream (Postfix -> smtp.gmail.com).
+        #
+        # SECURITY: because verification is disabled, SMTP_HOST must ONLY ever
+        # point at the host-local Postfix relay (host.docker.internal / a private
+        # host IP). Never point it at a public/external SMTP endpoint — that would
+        # send mail (incl. signed action links) over an unverified TLS channel.
         if smtp.has_extn("starttls"):
             ctx = ssl.create_default_context()
             ctx.check_hostname = False

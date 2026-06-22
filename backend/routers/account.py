@@ -254,19 +254,27 @@ def update_email_preferences(
     """Update email consent and (optionally) the chosen weekdays."""
     consent_date = datetime.now(timezone.utc) if body.email_consent else None
     days = _clean_email_days(body.email_days) if body.email_days is not None else None
+    # RETURNING email_days so the response always carries the real stored value
+    # (a list), never null, even when email_days was omitted from the request.
     with conn.cursor() as cur:
         if days is not None:
             cur.execute(
                 "UPDATE users SET email_consent = %s, email_consent_date = %s, "
-                "email_days = %s WHERE id = %s",
+                "email_days = %s WHERE id = %s RETURNING email_days",
                 (body.email_consent, consent_date, days, user["id"]),
             )
         else:
             cur.execute(
-                "UPDATE users SET email_consent = %s, email_consent_date = %s WHERE id = %s",
+                "UPDATE users SET email_consent = %s, email_consent_date = %s "
+                "WHERE id = %s RETURNING email_days",
                 (body.email_consent, consent_date, user["id"]),
             )
-    return {"ok": True, "email_consent": body.email_consent, "email_days": days}
+        row = cur.fetchone()
+    return {
+        "ok": True,
+        "email_consent": body.email_consent,
+        "email_days": row["email_days"] if row else (days or []),
+    }
 
 
 @router.get("/unsubscribe", response_class=HTMLResponse)

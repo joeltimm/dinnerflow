@@ -8,7 +8,8 @@
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email_days integer[] NOT NULL DEFAULT '{2,6}';
 
--- Guard against out-of-range values (a NULL/empty array is allowed = no emails).
+-- Guard against out-of-range values. The column is NOT NULL, so NULL is not
+-- allowed; an empty array {} is valid and means "no meal-plan emails".
 ALTER TABLE users DROP CONSTRAINT IF EXISTS chk_email_days_range;
 ALTER TABLE users ADD CONSTRAINT chk_email_days_range
   CHECK (email_days <@ ARRAY[1,2,3,4,5,6,7]);

@@ -201,7 +201,8 @@ def cook_recipe(request: Request, body: CookRequest, conn=Depends(get_db), user=
 def trigger_email_plan(request: Request, conn=Depends(get_db), user=Depends(get_current_user)):
     """
     Manually trigger a meal plan email for the current user.
-    (Celery Beat also triggers this automatically on Tue/Sat 10:30 AM.)
+    (Celery Beat also triggers this daily at 10:30 AM, sending only to users
+    whose email_days include that weekday.)
 
     Replaces the n8n 'Ironskillet' workflow's webhook trigger path.
     """
@@ -219,6 +220,7 @@ def select_from_email(
     token: str = Query(...),
     title: str = Query(...),
     url: str = Query(""),
+    conn=Depends(get_db),
 ):
     """
     Handles 'Add to My Recipes' clicks from meal plan emails.
@@ -232,9 +234,30 @@ def select_from_email(
     user_id = verify_email_token(token)
     app_url = get_settings().app_base_url
 
+    # DOCTYPE + charset so accented recipe titles (e.g. "Crêpes") render correctly.
+    head = (
+        '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1"></head>'
+    )
+
+    # The signed token proves the user existed when the email was sent, but an
+    # account can be deleted within the 7-day token window — fail cleanly.
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM users WHERE id = %s", (user_id,))
+        if not cur.fetchone():
+            return HTMLResponse(f"""
+            {head}
+            <body style="font-family:-apple-system,sans-serif;max-width:500px;margin:60px auto;text-align:center;">
+              <h2>Account not found</h2>
+              <p style="color:#666;">This account no longer exists.</p>
+              <a href="{escape(app_url)}">← Back to Iron Skillet</a>
+            </body></html>
+            """, status_code=404)
+
     if not url:
         return HTMLResponse(f"""
-        <html><body style="font-family:-apple-system,sans-serif;max-width:500px;margin:60px auto;text-align:center;">
+        {head}
+        <body style="font-family:-apple-system,sans-serif;max-width:500px;margin:60px auto;text-align:center;">
           <h2>⚠️ No recipe link</h2>
           <p style="color:#666;">This suggestion didn't include a source link to import.</p>
           <a href="{escape(app_url)}">← Back to Iron Skillet</a>
@@ -246,8 +269,9 @@ def select_from_email(
     scrape_and_save_recipe.delay(user_id, title, url)
 
     return HTMLResponse(f"""
-    <html><body style="font-family:-apple-system,sans-serif;max-width:500px;margin:60px auto;text-align:center;
-                       background:#f9f9f9;padding:40px;">
+    {head}
+    <body style="font-family:-apple-system,sans-serif;max-width:500px;margin:60px auto;text-align:center;
+                 background:#f9f9f9;padding:40px;">
       <div style="background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 8px rgba(0,0,0,.1);">
         <div style="font-size:48px;margin-bottom:16px;">🍳</div>
         <h2 style="color:#1a1a2e;margin:0 0 12px;">Adding your recipe…</h2>

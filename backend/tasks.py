@@ -103,6 +103,19 @@ def scrape_and_save_recipe(user_id: int, title: str, url: str):
     try:
         with get_connection() as conn:
             conn.cursor_factory = psycopg2.extras.RealDictCursor
+            # Idempotency guard: a retry (max_retries=2) after a committed insert
+            # would otherwise create a duplicate. Skip if this user already has
+            # the recipe from a prior attempt.
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM recipes WHERE user_id = %s AND source_url = %s LIMIT 1",
+                    (user_id, url),
+                )
+                if cur.fetchone():
+                    logger.info(
+                        "Recipe already saved for user %d (%s) — skipping", user_id, url
+                    )
+                    return
             _scrape_and_save_recipe(conn, user_id, title, url, "email_select")
         logger.info("Saved recipe '%s' for user %d from email select", title, user_id)
     except Exception as exc:

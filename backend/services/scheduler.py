@@ -53,7 +53,7 @@ def send_meal_plan_for_user(user_id: int, email: str, name: str) -> None:
 
     recipes: list[dict] = []
     fav_names = [f["title"] for f in favorites]
-    TARGET = 5
+    target = 5
     seen_urls: set[str] = set()
 
     # Add 1 favorite as a reminder
@@ -71,13 +71,13 @@ def send_meal_plan_for_user(user_id: int, email: str, name: str) -> None:
     # (Search-first produced garbage cards — web-page titles like "… - Facebook"
     # and snippet text instead of an actual recipe name.)
     try:
-        ideas = llm_svc.generate_meal_ideas(prefs, fav_names, n=TARGET - len(recipes) + 2)
+        ideas = llm_svc.generate_meal_ideas(prefs, fav_names, n=target - len(recipes) + 2)
     except Exception as exc:
         logger.error("LLM meal idea generation failed: %s", exc)
         ideas = []
 
     for idea in ideas:
-        if len(recipes) >= TARGET:
+        if len(recipes) >= target:
             break
         title = (idea.get("title") or "").strip()
         if not title:
@@ -115,7 +115,7 @@ def send_meal_plan_for_user(user_id: int, email: str, name: str) -> None:
             f"easy healthy dinner recipe{prefs_clause}",
             f"quick weeknight meal idea{prefs_clause}",
         ):
-            if len(recipes) >= TARGET:
+            if len(recipes) >= target:
                 break
             try:
                 results = search_recipes(query, max_results=2)
