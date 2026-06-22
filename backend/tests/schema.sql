@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict RGFYAMxHGOJOyaRjER66ZlatjKFDLkN2ZEaJn849xq9zLrfSmR4RGgL7C8rbkcu
+\restrict 9tD2AmI4y7iKZZSuusJ9KcJweTKPG6BlKeMhrp4NECivcXCI75XYhUXkQpYF9wk
 
 -- Dumped from database version 15.15 (Debian 15.15-1.pgdg12+1)
 -- Dumped by pg_dump version 15.15 (Debian 15.15-1.pgdg12+1)
@@ -127,13 +127,13 @@ CREATE TABLE public.recipes (
     instructions jsonb,
     full_text_content text,
     local_image_path text,
-    embedding public.vector(1536),
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     rating integer,
     last_cooked timestamp without time zone,
     times_cooked integer DEFAULT 0,
     is_favorite boolean DEFAULT false,
-    user_id integer
+    user_id integer,
+    embedding public.vector(768)
 );
 
 
@@ -428,6 +428,13 @@ CREATE INDEX idx_cooking_log_recipe_id ON public.cooking_log USING btree (recipe
 
 
 --
+-- Name: idx_recipes_embedding; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_recipes_embedding ON public.recipes USING hnsw (embedding public.vector_cosine_ops);
+
+
+--
 -- Name: idx_recipes_user_created; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -565,5 +572,5 @@ ALTER TABLE ONLY public.user_sessions
 -- PostgreSQL database dump complete
 --
 
-\unrestrict RGFYAMxHGOJOyaRjER66ZlatjKFDLkN2ZEaJn849xq9zLrfSmR4RGgL7C8rbkcu
+\unrestrict 9tD2AmI4y7iKZZSuusJ9KcJweTKPG6BlKeMhrp4NECivcXCI75XYhUXkQpYF9wk
 

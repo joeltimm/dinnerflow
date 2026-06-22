@@ -83,6 +83,17 @@ def _scrape_and_save_recipe(
     ingredients = extracted.get("ingredients", [])
     instructions = extracted.get("instructions", [])
 
+    # Compute the embedding up front (best-effort) so we can both store it inline
+    # and check whether this recipe duplicates one the user already has.
+    embedding_literal = None
+    try:
+        embed_text = llm_svc.recipe_embedding_text(title, ingredients, instructions)
+        embedding_literal = llm_svc.to_pgvector(
+            llm_svc.generate_embedding(embed_text, timeout=llm_timeout)
+        )
+    except Exception as exc:  # embedding is non-critical to saving the recipe
+        logger.warning("Embedding unavailable during import of '%s': %s", title, exc)
+
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -94,6 +105,27 @@ def _scrape_and_save_recipe(
             (title, url, json.dumps(ingredients), json.dumps(instructions), entry_method, user_id),
         )
         recipe_id = cur.fetchone()["id"]
+
+    # Store the embedding inline if we have it; else schedule it asynchronously.
+    duplicate_of = None
+    if embedding_literal:
+        from routers.recipes import query_similar
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE recipes SET embedding = %s::vector WHERE id = %s",
+                (embedding_literal, recipe_id),
+            )
+            dupes = query_similar(
+                cur, user_id, embedding_literal, limit=1, exclude_id=recipe_id,
+                max_distance=get_settings().dedup_distance_threshold,
+            )
+        duplicate_of = dupes[0] if dupes else None
+    else:
+        try:
+            from tasks import embed_recipe
+            embed_recipe.delay(recipe_id)
+        except Exception:
+            pass
 
     todoist_token, todoist_project = _get_todoist_config(conn, user_id)
     todoist_synced = 0
@@ -124,6 +156,7 @@ def _scrape_and_save_recipe(
         "instructions": instructions,
         "todoist_synced": todoist_synced,
         "todoist_error": todoist_error,
+        "duplicate_of": duplicate_of,
     }
 
 

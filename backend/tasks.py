@@ -123,6 +123,47 @@ def scrape_and_save_recipe(user_id: int, title: str, url: str):
         raise scrape_and_save_recipe.retry(exc=exc, countdown=20)
 
 
+@app.task(name="tasks.embed_recipe", ignore_result=True, max_retries=3)
+def embed_recipe(recipe_id: int):
+    """
+    Compute and store the embedding for a recipe (semantic search + dedup).
+
+    Runs off the request path so recipe create/update/scrape stay fast. Reads the
+    recipe's title + ingredients + instructions, embeds them, and writes the
+    vector back. Retries transient LLM/embedding failures.
+    """
+    from services import llm as llm_svc
+
+    _ensure_pool()
+    try:
+        with get_connection() as conn:
+            conn.cursor_factory = psycopg2.extras.RealDictCursor
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT title, ingredients, instructions FROM recipes WHERE id = %s",
+                    (recipe_id,),
+                )
+                row = cur.fetchone()
+            if not row:
+                logger.info("embed_recipe: recipe %d no longer exists — skipping", recipe_id)
+                return
+
+            text = llm_svc.recipe_embedding_text(
+                row["title"], row["ingredients"] or [], row["instructions"] or []
+            )
+            vector = llm_svc.to_pgvector(llm_svc.generate_embedding(text))
+
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE recipes SET embedding = %s::vector WHERE id = %s",
+                    (vector, recipe_id),
+                )
+        logger.info("Embedded recipe %d", recipe_id)
+    except Exception as exc:
+        logger.error("embed_recipe failed for recipe %d: %s", recipe_id, exc)
+        raise embed_recipe.retry(exc=exc, countdown=30)
+
+
 @app.task(name="tasks.cleanup_sessions", ignore_result=True)
 def cleanup_sessions():
     """Purge expired user_sessions rows (daily 3 AM)."""

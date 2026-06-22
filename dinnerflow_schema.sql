@@ -118,7 +118,7 @@ CREATE TABLE public.recipes (
     instructions jsonb,
     full_text_content text,
     local_image_path text,
-    embedding public.vector(1536),
+    embedding public.vector(768),
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     rating integer,
     last_cooked timestamp without time zone,
@@ -497,4 +497,8 @@ ALTER TABLE ONLY public.user_sessions
 --
 
 \unrestrict MDYcCIzTGsilutvJcCeoHWjIcSOSbifMPamTpI2UJBVA6yzl1hR7BLnrS3cJKpc
+
+-- Semantic-search index (migration 005). Kept here so fresh installs match.
+CREATE INDEX IF NOT EXISTS idx_recipes_embedding
+  ON public.recipes USING hnsw (embedding public.vector_cosine_ops);
 

@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     llm_max_attempts: int = 2
     llm_retry_backoff_seconds: float = 1.0
 
+    # ── Embeddings (semantic search + duplicate detection) ────────────────────
+    # Served by the same OpenAI-compatible endpoint (llama.cpp nomic-embed).
+    embed_model: str = "nomic-embed-text-v1.5-q5_k_m"
+    embed_dim: int = 768                 # nomic-embed-text-v1.5 output dimension
+    embed_timeout: int = 60              # embeddings are fast; fail quick if stalled
+    # Cosine-distance threshold below which an imported recipe is treated as a
+    # likely duplicate of an existing one (0 = identical, 2 = opposite).
+    dedup_distance_threshold: float = 0.15
+
     # ── Tavily (web search for recipe ideas) ──────────────────────────────────
     tavily_api_key: str = ""
 

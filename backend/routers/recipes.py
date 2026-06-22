@@ -25,6 +25,8 @@ from config import get_settings
 from database import get_db
 from dependencies import get_current_user
 from limiter import limiter
+from services import llm as llm_svc
+from services.llm import LLMUnavailable
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/recipes", tags=["recipes"])
@@ -42,6 +44,43 @@ def _own_recipe(cur, recipe_id: int, user_id: int) -> dict:
     if not r:
         raise HTTPException(status_code=404, detail="Recipe not found")
     return dict(r)
+
+
+def _enqueue_embedding(recipe_id: int) -> None:
+    """Schedule (re)computation of a recipe's embedding off the request path."""
+    try:
+        from tasks import embed_recipe
+        embed_recipe.delay(recipe_id)
+    except Exception as exc:  # broker down etc. — never block the write
+        logger.warning("Could not enqueue embedding for recipe %d: %s", recipe_id, exc)
+
+
+def query_similar(
+    cur, user_id: int, vector_literal: str, *,
+    limit: int = 20, exclude_id: int | None = None, max_distance: float | None = None,
+) -> list[dict]:
+    """
+    Nearest recipes for a user by cosine distance (pgvector ``<=>``). Only rows
+    that already have an embedding are considered. Used by semantic search and by
+    duplicate detection on import.
+    """
+    sql = [
+        "SELECT id, title, source_url, local_image_path, rating, is_favorite,",
+        "       embedding <=> %s::vector AS distance",
+        "FROM recipes",
+        "WHERE user_id = %s AND embedding IS NOT NULL",
+    ]
+    params: list = [vector_literal, user_id]
+    if exclude_id is not None:
+        sql.append("AND id <> %s")
+        params.append(exclude_id)
+    sql.append("ORDER BY distance ASC LIMIT %s")
+    params.append(limit)
+    cur.execute("\n".join(sql), params)
+    rows = [dict(r) for r in cur.fetchall()]
+    if max_distance is not None:
+        rows = [r for r in rows if r["distance"] <= max_distance]
+    return rows
 
 
 # ── Request models ────────────────────────────────────────────────────────────
@@ -116,7 +155,35 @@ def create_recipe(request: Request, body: RecipeCreate, conn=Depends(get_db), us
                 user["id"],
             ),
         )
-        return dict(cur.fetchone())
+        created = dict(cur.fetchone())
+    _enqueue_embedding(created["id"])
+    return created
+
+
+@router.get("/search")
+@limiter.limit("30/minute")
+def semantic_search(
+    request: Request,
+    q: str,
+    conn=Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Natural-language recipe search over the user's cookbook. Embeds the query and
+    returns the closest recipes by cosine distance. Recipes not yet embedded are
+    omitted (their embedding is computed asynchronously on save).
+    """
+    query = q.strip()
+    if not query:
+        return []
+    try:
+        vector = llm_svc.to_pgvector(llm_svc.generate_embedding(query))
+    except LLMUnavailable:
+        raise HTTPException(
+            status_code=503, detail="Search is temporarily unavailable — try again shortly."
+        )
+    with conn.cursor() as cur:
+        return query_similar(cur, user["id"], vector, limit=20)
 
 
 @router.get("/{recipe_id}")
@@ -172,7 +239,12 @@ def update_recipe(
             f"UPDATE recipes SET {set_clause} WHERE id = %s AND user_id = %s RETURNING *",
             (*updates.values(), recipe_id, user["id"]),
         )
-        return dict(cur.fetchone())
+        updated = dict(cur.fetchone())
+
+    # Re-embed only when the semantically meaningful fields changed.
+    if updates.keys() & {"title", "ingredients", "instructions"}:
+        _enqueue_embedding(recipe_id)
+    return updated
 
 
 @router.delete("/{recipe_id}", status_code=status.HTTP_204_NO_CONTENT)
