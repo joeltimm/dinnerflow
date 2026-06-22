@@ -215,18 +215,34 @@ def delete_account(
 
 class EmailPreferencesUpdate(BaseModel):
     email_consent: bool
+    # Weekdays to receive meal-plan emails (ISO Mon=1..Sun=7). Optional — when
+    # omitted the existing selection is left unchanged. Empty list = no days.
+    email_days: list[int] | None = None
+
+
+def _clean_email_days(days: list[int]) -> list[int]:
+    """Validate, dedupe, and sort ISO weekday numbers (1=Mon..7=Sun)."""
+    cleaned = sorted(set(days))
+    if any(d < 1 or d > 7 for d in cleaned):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="email_days must be ISO weekday numbers 1-7 (Mon=1..Sun=7).",
+        )
+    return cleaned
 
 
 @router.get("/email-preferences")
 def get_email_preferences(conn=Depends(get_db), user=Depends(get_current_user)):
-    """Return current email consent status for the logged-in user."""
+    """Return current email consent + chosen weekdays for the logged-in user."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT email_consent, email_consent_date FROM users WHERE id = %s",
+            "SELECT email_consent, email_consent_date, email_days FROM users WHERE id = %s",
             (user["id"],),
         )
         row = cur.fetchone()
-    return dict(row) if row else {"email_consent": False, "email_consent_date": None}
+    if not row:
+        return {"email_consent": False, "email_consent_date": None, "email_days": []}
+    return dict(row)
 
 
 @router.put("/email-preferences")
@@ -235,14 +251,22 @@ def update_email_preferences(
     conn=Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Update email consent. Records the timestamp when consent changes."""
+    """Update email consent and (optionally) the chosen weekdays."""
     consent_date = datetime.now(timezone.utc) if body.email_consent else None
+    days = _clean_email_days(body.email_days) if body.email_days is not None else None
     with conn.cursor() as cur:
-        cur.execute(
-            "UPDATE users SET email_consent = %s, email_consent_date = %s WHERE id = %s",
-            (body.email_consent, consent_date, user["id"]),
-        )
-    return {"ok": True, "email_consent": body.email_consent}
+        if days is not None:
+            cur.execute(
+                "UPDATE users SET email_consent = %s, email_consent_date = %s, "
+                "email_days = %s WHERE id = %s",
+                (body.email_consent, consent_date, days, user["id"]),
+            )
+        else:
+            cur.execute(
+                "UPDATE users SET email_consent = %s, email_consent_date = %s WHERE id = %s",
+                (body.email_consent, consent_date, user["id"]),
+            )
+    return {"ok": True, "email_consent": body.email_consent, "email_days": days}
 
 
 @router.get("/unsubscribe", response_class=HTMLResponse)

@@ -108,10 +108,10 @@ def _scrape_and_save_recipe(
             cur.execute(
                 """
                 INSERT INTO recipe_sync_logs
-                  (user_id, recipe_id, ingredients_count, provider, source_url)
-                VALUES (%s, %s, %s, 'todoist', %s)
+                  (user_id, recipe_id, ingredients_count, provider)
+                VALUES (%s, %s, %s, 'todoist')
                 """,
-                (user_id, recipe_id, todoist_synced, url),
+                (user_id, recipe_id, todoist_synced),
             )
 
     return {
@@ -219,60 +219,43 @@ def select_from_email(
     token: str = Query(...),
     title: str = Query(...),
     url: str = Query(""),
-    conn=Depends(get_db),
 ):
     """
     Handles 'Add to My Recipes' clicks from meal plan emails.
     Replaces the n8n 'Selection Ingestor' (/webhook/select).
 
-    Uses a HMAC-signed token (no login required) to identify the user.
-    Scrapes + saves the recipe, syncs Todoist, then shows a confirmation page.
+    Uses a HMAC-signed token (no login required) to identify the user. The slow
+    scrape → LLM extract → save → Todoist sync runs in a background Celery task,
+    so the click returns an instant confirmation instead of hanging on the request.
     """
-    # Verify signed token from email link
+    # Verify signed token from email link (raises on tampered/expired links)
     user_id = verify_email_token(token)
-
-    # Fetch user info
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT id, email, full_name, dietary_preferences FROM users WHERE id = %s",
-            (user_id,),
-        )
-        user_row = cur.fetchone()
-
-    if not user_row:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    user = dict(user_row)
-
-    result = None
-    error_msg = None
-
-    if url:
-        try:
-            result = _scrape_and_save_recipe(conn, user_id, title, url, "email_select")
-        except Exception as exc:
-            logger.error("select-from-email failed for user %d: %s", user_id, exc)
-            error_msg = str(exc)
-
     app_url = get_settings().app_base_url
 
-    if error_msg:
+    if not url:
         return HTMLResponse(f"""
-        <html><body style="font-family:sans-serif;max-width:500px;margin:60px auto;text-align:center;">
-          <h2>⚠️ Something went wrong</h2>
-          <p style="color:#666;">{escape(error_msg)}</p>
+        <html><body style="font-family:-apple-system,sans-serif;max-width:500px;margin:60px auto;text-align:center;">
+          <h2>⚠️ No recipe link</h2>
+          <p style="color:#666;">This suggestion didn't include a source link to import.</p>
           <a href="{escape(app_url)}">← Back to Iron Skillet</a>
         </body></html>
         """)
+
+    # Hand the slow work to a worker and return immediately.
+    from tasks import scrape_and_save_recipe
+    scrape_and_save_recipe.delay(user_id, title, url)
 
     return HTMLResponse(f"""
     <html><body style="font-family:-apple-system,sans-serif;max-width:500px;margin:60px auto;text-align:center;
                        background:#f9f9f9;padding:40px;">
       <div style="background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 8px rgba(0,0,0,.1);">
-        <div style="font-size:48px;margin-bottom:16px;">✅</div>
-        <h2 style="color:#1a1a2e;margin:0 0 12px;">Recipe Saved!</h2>
-        <p style="color:#666;margin:0 0 8px;"><strong>{escape(title)}</strong> has been added to your recipes.</p>
-        {"<p style='color:#4a9;font-size:14px;'>🛒 Ingredients synced to Todoist.</p>" if result and result.get("todoist_synced") else ""}
+        <div style="font-size:48px;margin-bottom:16px;">🍳</div>
+        <h2 style="color:#1a1a2e;margin:0 0 12px;">Adding your recipe…</h2>
+        <p style="color:#666;margin:0 0 8px;">
+          <strong>{escape(title)}</strong> is being saved to your recipes now. It'll appear in
+          a moment — we're fetching the page and extracting the ingredients
+          (and syncing to Todoist if you have it connected).
+        </p>
         <a href="{escape(app_url)}"
            style="display:inline-block;margin-top:24px;background:#1a1a2e;color:#e2b96f;
                   padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">

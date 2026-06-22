@@ -39,9 +39,11 @@ app.conf.update(
 
 # Beat schedule — replaces APScheduler jobs
 app.conf.beat_schedule = {
-    "meal-plans-tue-sat": {
+    # Fire daily; send_all_meal_plans filters each user by their chosen
+    # email_days (ISO Mon=1..Sun=7), so per-user day selection is honoured.
+    "meal-plans-daily": {
         "task": "tasks.send_all_meal_plans",
-        "schedule": crontab(hour=10, minute=30, day_of_week="tue,sat"),
+        "schedule": crontab(hour=10, minute=30),
     },
     "session-cleanup-daily": {
         "task": "tasks.cleanup_sessions",

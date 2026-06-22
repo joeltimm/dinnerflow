@@ -21,6 +21,7 @@ Account records. One per registered user.
 | dietary_preferences | text | | |
 | email_consent | boolean | false | NOT NULL |
 | email_consent_date | timestamptz | | |
+| email_days | integer[] | `{2,6}` | NOT NULL, CHECK all values 1–7 (ISO Mon=1…Sun=7) — weekdays to receive meal-plan emails |
 
 ---
 
