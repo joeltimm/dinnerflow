@@ -54,12 +54,6 @@ class Settings(BaseSettings):
     # Google account (joeltimm.dev is already verified — Infisical sends as it).
     smtp_from: str = "noreply@joeltimm.dev"
 
-    # ── Gmail OAuth (legacy — superseded by the SMTP relay above) ──────────────
-    # Path to directory containing token_{suffix}.json files
-    google_auth_path: str = "/app/google_auth"
-    # Full email address used to send mail (e.g. joeltimm@gmail.com)
-    sender_email: str = ""
-
     # ── Database pool ────────────────────────────────────────────────────────
     db_pool_min: int = 2
     db_pool_max: int = 50
@@ -93,6 +87,11 @@ class Settings(BaseSettings):
     # ── Monitoring thresholds ────────────────────────────────────────────────
     disk_warn_pct: int = 80
     disk_crit_pct: int = 90
+
+    # ── Error reporting (optional) ─────────────────────────────────────────────
+    # Set SENTRY_DSN to enable Sentry; left blank → Sentry stays disabled (no-op).
+    sentry_dsn: str = ""
+    environment: str = "production"
 
     class Config:
         env_file = ".env"

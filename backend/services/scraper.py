@@ -60,9 +60,15 @@ def fetch_and_clean(url: str) -> str:
     Download a recipe page and return cleaned plain text.
     Raises ValueError for disallowed URLs, requests.HTTPError on non-2xx responses.
     """
+    from services import metrics
     _validate_url(url)
-    resp = requests.get(url, headers=_HEADERS, timeout=_FETCH_TIMEOUT)
-    resp.raise_for_status()
+    try:
+        resp = requests.get(url, headers=_HEADERS, timeout=_FETCH_TIMEOUT)
+        resp.raise_for_status()
+    except Exception:
+        metrics.inc("scrapes_failed")
+        raise
+    metrics.inc("scrapes_ok")
     return _clean_html(resp.text)
 
 

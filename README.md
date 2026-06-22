@@ -1,6 +1,10 @@
-# Dinnerflow / Iron Skillet
+# Iron Skillet
 
 **Self-hosted, AI-powered meal planning.**
+
+> Formerly "Dinnerflow" — that name lives on only as the internal Postgres
+> database/volume name (`dinnerflow`, `dinnerflow_postgres_data`), kept as-is to
+> avoid a risky data migration.
 
 FastAPI backend + React frontend + PostgreSQL. AI scraping, recipe extraction, weekly meal plan emails, and Todoist sync — all handled internally by Python, no external automation required.
 
@@ -34,7 +38,7 @@ FastAPI backend + React frontend + PostgreSQL. AI scraping, recipe extraction, w
 ## Project Structure
 
 ```
-dinnerflow/
+ironskillet/
 ├── compose.yml
 ├── .env.example
 ├── backend/
@@ -72,12 +76,11 @@ dinnerflow/
 │   ├── alembic/                 # Alembic harness for revision tracking (raw SQL, no ORM)
 │   │   ├── env.py
 │   │   └── versions/            # Migration scripts (001_baseline, 002_add_indexes, ...)
-│   ├── alembic.ini
-│   └── scripts/
-│       └── generate_gmail_token.py  # One-time Gmail OAuth setup
+│   └── alembic.ini
 ├── scripts/
 │   ├── backup-db.sh             # Automated pg_dump with rotation (7 daily + 4 weekly)
-│   └── restore-db.sh            # Interactive database restore from backup
+│   ├── restore-db.sh            # Interactive database restore from backup
+│   └── backfill_embeddings.py   # One-off: embed existing recipes (semantic search)
 ├── web/
 │   ├── src/
 │   │   ├── api/client.js        # Axios API client (all endpoints)
@@ -154,9 +157,6 @@ if the relay offers it. The reference setup is a **host Postfix** that smarthost
 the container subnet is trusted in Postfix `mynetworks`, so no auth is needed on this hop and
 Postfix handles TLS + auth upstream. Set `SMTP_FROM` to a verified send-as address for your
 domain. No OAuth tokens required.
-
-> A legacy Gmail-API path exists (`scripts/generate_gmail_token.py`, `SENDER_EMAIL`,
-> `GOOGLE_AUTH_HOST_PATH`) but is superseded by the SMTP relay above.
 
 ### 4. Docker volume
 
