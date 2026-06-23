@@ -28,7 +28,7 @@ def _safe_url(url: str) -> str:
     return ""
 
 
-def _send(to: str, subject: str, html_body: str) -> None:
+def _send(to: str, subject: str, html_body: str, email_type: str = "other") -> None:
     """Low-level send via the host Postfix SMTP relay."""
     settings = get_settings()
     from_addr = settings.smtp_from
@@ -39,6 +39,17 @@ def _send(to: str, subject: str, html_body: str) -> None:
     msg["Subject"] = subject
     msg.attach(MIMEText(html_body, "html"))
 
+    from services import metrics
+    try:
+        _smtp_send(settings, msg, from_addr, to)
+    except Exception:
+        metrics.record_email(email_type, "failed")
+        raise
+    metrics.record_email(email_type, "ok")
+    logger.info("Email sent to %s | subject: %s", to, subject)
+
+
+def _smtp_send(settings, msg, from_addr, to) -> None:
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
         smtp.ehlo()
         # The relay enforces STARTTLS even from trusted networks. We reach it via
@@ -57,10 +68,6 @@ def _send(to: str, subject: str, html_body: str) -> None:
             smtp.starttls(context=ctx)
             smtp.ehlo()
         smtp.send_message(msg, from_addr=from_addr, to_addrs=[to])
-
-    from services import metrics
-    metrics.inc("emails_sent")
-    logger.info("Email sent to %s | subject: %s", to, subject)
 
 
 # ── Email templates ───────────────────────────────────────────────────────────
@@ -156,7 +163,7 @@ def send_welcome_email(to_email: str, user_name: str) -> None:
     </html>
     """
 
-    _send(to_email, "Welcome to Iron Skillet", html)
+    _send(to_email, "Welcome to Iron Skillet", html, email_type="welcome")
 
 
 def send_meal_plan_email(
@@ -258,4 +265,4 @@ def send_meal_plan_email(
     </html>
     """
 
-    _send(to_email, "Your Weekly Meal Ideas — Iron Skillet", html)
+    _send(to_email, "Your Weekly Meal Ideas — Iron Skillet", html, email_type="meal_plan")

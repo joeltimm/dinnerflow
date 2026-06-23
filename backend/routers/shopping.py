@@ -50,7 +50,10 @@ def add_item(body: ShoppingItemCreate, conn=Depends(get_db), user=Depends(get_cu
             """,
             (user["id"], body.item_text, body.recipe_source),
         )
-        return dict(cur.fetchone())
+        item = dict(cur.fetchone())
+    from services import metrics
+    metrics.record_shopping_add("recipe" if body.recipe_source else "manual")
+    return item
 
 
 @router.post("/from-recipe/{recipe_id}", status_code=status.HTTP_201_CREATED)
@@ -94,6 +97,9 @@ def add_from_recipe(recipe_id: int, conn=Depends(get_db), user=Depends(get_curre
             added.append(dict(cur.fetchone()))
             existing.add(item.lower())
 
+    if added:
+        from services import metrics
+        metrics.record_shopping_add("recipe", len(added))
     return {"added": added, "count": len(added), "recipe_source": source}
 
 

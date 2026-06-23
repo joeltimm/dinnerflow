@@ -58,8 +58,9 @@ def _chat(
     last_exc: Exception | None = None
     for attempt in range(1, settings.llm_max_attempts + 1):
         try:
+            started = time.monotonic()
             resp = _client(timeout).chat.completions.create(**kwargs)
-            metrics.inc("llm_calls_ok")
+            metrics.record_llm("chat", "ok", time.monotonic() - started)
             return resp.choices[0].message.content.strip()
         except (APIConnectionError, APITimeoutError) as exc:
             last_exc = exc
@@ -68,8 +69,9 @@ def _chat(
                 attempt, settings.llm_max_attempts, exc,
             )
             if attempt < settings.llm_max_attempts:
+                metrics.record_llm_retry("chat")
                 time.sleep(settings.llm_retry_backoff_seconds * attempt)
-    metrics.inc("llm_calls_failed")
+    metrics.record_llm("chat", "failed")
     raise LLMUnavailable(str(last_exc)) from last_exc
 
 
@@ -218,16 +220,20 @@ def generate_embedding(text: str, timeout: float | None = None) -> list[float]:
     Retries transient connection/timeout errors; raises LLMUnavailable on exhaustion
     so callers (or the Celery task) can react instead of storing a bad value.
     """
+    from services import metrics
+
     settings = get_settings()
     effective_timeout = timeout if timeout is not None else settings.embed_timeout
 
     last_exc: Exception | None = None
     for attempt in range(1, settings.llm_max_attempts + 1):
         try:
+            started = time.monotonic()
             resp = _client(effective_timeout).embeddings.create(
                 model=settings.embed_model,
                 input=text[:6_000],
             )
+            metrics.record_llm("embedding", "ok", time.monotonic() - started)
             return resp.data[0].embedding
         except (APIConnectionError, APITimeoutError) as exc:
             last_exc = exc
@@ -236,7 +242,9 @@ def generate_embedding(text: str, timeout: float | None = None) -> list[float]:
                 attempt, settings.llm_max_attempts, exc,
             )
             if attempt < settings.llm_max_attempts:
+                metrics.record_llm_retry("embedding")
                 time.sleep(settings.llm_retry_backoff_seconds * attempt)
+    metrics.record_llm("embedding", "failed")
     raise LLMUnavailable(str(last_exc)) from last_exc
 
 

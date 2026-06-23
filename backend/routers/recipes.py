@@ -156,6 +156,8 @@ def create_recipe(request: Request, body: RecipeCreate, conn=Depends(get_db), us
             ),
         )
         created = dict(cur.fetchone())
+    from services import metrics
+    metrics.record_recipe_import(body.entry_method)
     _enqueue_embedding(created["id"])
     return created
 
@@ -307,6 +309,10 @@ def log_cook(
             (recipe_id, body.rating, body.notes),
         )
 
+    from services import metrics
+    metrics.record_cook()
+    if body.rating is not None:
+        metrics.record_rating(body.rating)
     return {"ok": True}
 
 
@@ -323,6 +329,8 @@ def update_rating(
             "UPDATE recipes SET rating = %s WHERE id = %s AND user_id = %s",
             (body.rating, recipe_id, user["id"]),
         )
+    from services import metrics
+    metrics.record_rating(body.rating)
     return {"ok": True}
 
 

@@ -1,0 +1,58 @@
+# Iron Skillet scrape jobs for homelab-prometheus-1.
+#
+# Prometheus runs as a container on the `homelab_backend` network, so it reaches
+# Iron Skillet by CONTAINER NAME (like it already does for node_exporter /
+# nginx_exporter / calendar_bot) — NOT via 127.0.0.1 or a host IP. The Iron
+# Skillet containers join `homelab_backend` in compose.yml.
+#
+# Ports here are the CONTAINER ports (e.g. cAdvisor is 8080 inside the container,
+# even though compose publishes it on the host as 9101).
+#
+# Append these list items under the existing `scrape_configs:` key in
+# /home/joel/homelab-configs/homelab-monitoring/prometheus/prometheus.yml
+# (keep the 2-space indentation so each "- job_name" aligns with the others).
+
+  # Custom application metrics from the FastAPI backend (HTTP RED, LLM, business).
+  - job_name: 'ironskillet-backend'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ironskillet_backend:8000']
+        labels: {app: ironskillet, component: backend}
+
+  # In-task custom metrics from the Celery worker (embeds, scrapes, emails,
+  # email-link imports, Todoist syncs).
+  - job_name: 'ironskillet-celery-worker'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ironskillet_worker:9111']
+        labels: {app: ironskillet, component: celery-worker}
+
+  # Celery task lifecycle (sent/started/succeeded/failed/runtime, queue length).
+  - job_name: 'ironskillet-celery-exporter'
+    static_configs:
+      - targets: ['ironskillet_celery_exporter:9808']
+        labels: {app: ironskillet, component: celery}
+
+  # PostgreSQL internals + Iron Skillet business gauges (postgres_queries.yaml).
+  - job_name: 'ironskillet-postgres'
+    static_configs:
+      - targets: ['ironskillet_postgres_exporter:9187']
+        labels: {app: ironskillet, component: postgres}
+
+  # Redis broker health + Celery queue backlog.
+  - job_name: 'ironskillet-redis'
+    static_configs:
+      - targets: ['ironskillet_redis_exporter:9121']
+        labels: {app: ironskillet, component: redis}
+
+  # Host CPU/mem/disk/network (Iron Skillet's own node-exporter instance).
+  - job_name: 'ironskillet-node'
+    static_configs:
+      - targets: ['ironskillet_node_exporter:9100']
+        labels: {app: ironskillet, component: host}
+
+  # Per-container CPU/mem/network. NOTE: 8080 is cAdvisor's container port.
+  - job_name: 'ironskillet-cadvisor'
+    static_configs:
+      - targets: ['ironskillet_cadvisor:8080']
+        labels: {app: ironskillet, component: containers}

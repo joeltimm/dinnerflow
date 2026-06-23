@@ -1,0 +1,112 @@
+# Custom Iron Skillet business metrics, scraped by postgres-exporter.
+#
+# These run as plain SQL on every Prometheus scrape against the app database, so
+# the numbers are exact and global (not per-worker like the in-app counters).
+# Mounted into the postgres-exporter container at /etc/postgres_exporter/queries.yaml
+# (PG_EXPORTER_EXTEND_QUERY_PATH). Each top-level key prefixes the metric name,
+# e.g. `ironskillet_recipes_total`, `ironskillet_recipes_by_method_count{method=...}`.
+
+ironskillet_recipes:
+  query: |
+    SELECT
+      count(*)                                              AS total,
+      count(*) FILTER (WHERE is_favorite)                   AS favorites,
+      count(*) FILTER (WHERE local_image_path IS NOT NULL)  AS with_image,
+      count(*) FILTER (WHERE embedding IS NOT NULL)         AS with_embedding,
+      COALESCE(avg(rating) FILTER (WHERE rating > 0), 0)    AS avg_rating
+    FROM recipes
+  metrics:
+    - total:          {usage: "GAUGE", description: "Total recipes across all users"}
+    - favorites:      {usage: "GAUGE", description: "Recipes marked favorite"}
+    - with_image:     {usage: "GAUGE", description: "Recipes that have an uploaded image"}
+    - with_embedding: {usage: "GAUGE", description: "Recipes with an embedding (semantic-search coverage)"}
+    - avg_rating:     {usage: "GAUGE", description: "Average star rating of rated recipes"}
+
+ironskillet_recipes_by_method:
+  query: |
+    SELECT COALESCE(entry_method, 'unknown') AS method, count(*) AS count
+    FROM recipes
+    GROUP BY 1
+  metrics:
+    - method: {usage: "LABEL", description: "Entry method (manual/url/email_select/instant_chef)"}
+    - count:  {usage: "GAUGE", description: "Recipes by entry method"}
+
+ironskillet_users:
+  query: |
+    SELECT
+      count(*)                            AS total,
+      count(*) FILTER (WHERE email_consent) AS email_consented
+    FROM users
+  metrics:
+    - total:           {usage: "GAUGE", description: "Registered users"}
+    - email_consented: {usage: "GAUGE", description: "Users opted in to meal-plan emails"}
+
+ironskillet_integrations:
+  query: |
+    SELECT provider, count(*) AS count
+    FROM user_integrations
+    GROUP BY 1
+  metrics:
+    - provider: {usage: "LABEL", description: "Integration provider"}
+    - count:    {usage: "GAUGE", description: "Users with this integration connected"}
+
+ironskillet_cooking:
+  query: |
+    SELECT
+      count(*)                                                                 AS total,
+      count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')           AS last_7d,
+      count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')          AS last_30d,
+      COALESCE(avg(rating) FILTER (WHERE rating IS NOT NULL), 0)               AS avg_rating
+    FROM cooking_log
+  metrics:
+    - total:      {usage: "GAUGE", description: "All-time cook sessions logged"}
+    - last_7d:    {usage: "GAUGE", description: "Cook sessions in the last 7 days"}
+    - last_30d:   {usage: "GAUGE", description: "Cook sessions in the last 30 days"}
+    - avg_rating: {usage: "GAUGE", description: "Average rating across cook sessions"}
+
+ironskillet_ratings:
+  query: |
+    SELECT rating::text AS stars, count(*) AS count
+    FROM cooking_log
+    WHERE rating IS NOT NULL
+    GROUP BY 1
+  metrics:
+    - stars: {usage: "LABEL", description: "Star rating (1-5)"}
+    - count: {usage: "GAUGE", description: "Cook sessions at this rating"}
+
+ironskillet_shopping:
+  query: |
+    SELECT
+      count(*)                              AS total,
+      count(*) FILTER (WHERE NOT is_checked) AS unchecked
+    FROM shopping_list_items
+  metrics:
+    - total:     {usage: "GAUGE", description: "Shopping-list items (all users)"}
+    - unchecked: {usage: "GAUGE", description: "Unchecked shopping-list items"}
+
+ironskillet_sessions:
+  query: |
+    SELECT count(*) FILTER (WHERE expires_at > NOW()) AS active
+    FROM user_sessions
+  metrics:
+    - active: {usage: "GAUGE", description: "Active (unexpired) login sessions"}
+
+ironskillet_sync_logs:
+  query: |
+    SELECT
+      count(*)                            AS total,
+      COALESCE(sum(ingredients_count), 0) AS ingredients_total
+    FROM recipe_sync_logs
+  metrics:
+    - total:             {usage: "GAUGE", description: "Recipe→Todoist sync events recorded"}
+    - ingredients_total: {usage: "GAUGE", description: "Total ingredients synced to Todoist"}
+
+ironskillet_table:
+  query: |
+    SELECT relname AS table, pg_total_relation_size(c.oid) AS size_bytes
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind = 'r'
+  metrics:
+    - table:      {usage: "LABEL", description: "Table name"}
+    - size_bytes: {usage: "GAUGE", description: "Total on-disk size of the table (incl. indexes/toast)"}

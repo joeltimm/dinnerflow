@@ -47,6 +47,9 @@ duckduckgo-search==6.3.7   # Fallback: DDG (no API key, no credit limits)
 # Error reporting (optional — only active when SENTRY_DSN is set)
 sentry-sdk[fastapi]==2.19.2
 
+# Metrics — Prometheus instrumentation (multiprocess-aware; see services/metrics.py)
+prometheus-client==0.21.1
+
 # Testing & linting (also run in CI — see .forgejo/workflows/ci.yml)
 pytest==8.3.4
 pytest-mock==3.14.0

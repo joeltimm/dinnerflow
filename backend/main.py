@@ -5,10 +5,11 @@ Mounts all routers, serves uploaded images as static files,
 and manages the scheduler lifecycle.
 """
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
@@ -87,6 +88,33 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
+
+    # Prometheus RED metrics for every request. Uses the matched route template
+    # (e.g. /api/recipes/{recipe_id}) as the label so path params don't explode
+    # cardinality. /metrics itself is excluded to avoid self-measurement noise.
+    @app.middleware("http")
+    async def prometheus_metrics(request: Request, call_next):
+        from services import metrics
+        started = time.monotonic()
+        response = await call_next(request)
+        route = request.scope.get("route")
+        path = getattr(route, "path", None) or "unmatched"
+        if path != "/metrics":
+            elapsed = time.monotonic() - started
+            metrics.HTTP_REQUESTS.labels(
+                method=request.method, route=path, status=response.status_code,
+            ).inc()
+            metrics.HTTP_REQUEST_DURATION.labels(
+                method=request.method, route=path,
+            ).observe(elapsed)
+        return response
+
+    @app.get("/metrics")
+    def metrics_endpoint():
+        """Prometheus scrape endpoint (aggregated across gunicorn workers)."""
+        from services import metrics
+        payload, content_type = metrics.latest()
+        return Response(content=payload, media_type=content_type)
 
     # CORS — allow the React frontend origin(s)
     app.add_middleware(

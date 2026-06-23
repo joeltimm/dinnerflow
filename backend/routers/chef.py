@@ -106,6 +106,9 @@ def _scrape_and_save_recipe(
         )
         recipe_id = cur.fetchone()["id"]
 
+    from services import metrics
+    metrics.record_recipe_import(entry_method)
+
     # Store the embedding inline if we have it; else schedule it asynchronously.
     duplicate_of = None
     if embedding_literal:
@@ -120,6 +123,7 @@ def _scrape_and_save_recipe(
                 max_distance=get_settings().dedup_distance_threshold,
             )
         duplicate_of = dupes[0] if dupes else None
+        metrics.record_duplicate(duplicate_of is not None)
     else:
         try:
             from tasks import embed_recipe
@@ -135,9 +139,11 @@ def _scrape_and_save_recipe(
             todoist_synced = todoist_svc.sync_ingredients(
                 todoist_token, todoist_project, ingredients, title
             )
+            metrics.record_todoist_sync("ok")
         except Exception as exc:
             logger.warning("Todoist sync failed for recipe %d: %s", recipe_id, exc)
             todoist_error = True
+            metrics.record_todoist_sync("failed")
 
     if todoist_token and todoist_project:
         with conn.cursor() as cur:
@@ -322,6 +328,8 @@ def select_from_email(
         """)
 
     # Hand the slow work to a worker and return immediately.
+    from services import metrics
+    metrics.record_email_link_click()
     from tasks import scrape_and_save_recipe
     scrape_and_save_recipe.delay(user_id, title, url)
 

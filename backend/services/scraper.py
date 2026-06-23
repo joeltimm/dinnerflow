@@ -66,9 +66,9 @@ def fetch_and_clean(url: str) -> str:
         resp = requests.get(url, headers=_HEADERS, timeout=_FETCH_TIMEOUT)
         resp.raise_for_status()
     except Exception:
-        metrics.inc("scrapes_failed")
+        metrics.record_scrape("failed")
         raise
-    metrics.inc("scrapes_ok")
+    metrics.record_scrape("ok")
     return _clean_html(resp.text)
 
 
